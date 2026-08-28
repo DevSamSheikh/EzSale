@@ -94,6 +94,14 @@ export function clearAuth() {
   localStorage.removeItem(KEY_AUTH)
 }
 
+export function memberTermPlural(): string {
+  return getBusiness()?.terminology.memberPlural ?? 'Users'
+}
+
+export function memberTerm(): string {
+  return getBusiness()?.terminology.member ?? 'User'
+}
+
 export const TERMINOLOGY_BY_TYPE: Record<BusinessType, import('./types').Terminology> = {
   restaurant: { product: 'Menu item', productPlural: 'Menu items', member: 'Guest', memberPlural: 'Guests', unit: 'Table', order: 'Ticket' },
   school: { product: 'Service', productPlural: 'Services', member: 'Student', memberPlural: 'Students', unit: 'Class', order: 'Invoice' },

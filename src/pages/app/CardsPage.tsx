@@ -2,8 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowDownToLine,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   CreditCard,
   Filter,
+  LayoutGrid,
+  List,
   Nfc,
   Plus,
   Search,
@@ -30,6 +36,8 @@ import { playCue } from '../../audio'
 
 type StatusFilter = MembershipCardStatus | 'all'
 type TypeFilter = MembershipCardType | 'all'
+type ViewMode = 'list' | 'grid'
+type PageSize = 6 | 12 | 24 | 48
 
 const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -123,6 +131,9 @@ export default function CardsPage() {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [tierFilter, setTierFilter] = useState<string>('all')
   const [addOpen, setAddOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>('list')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState<PageSize>(12)
 
   useEffect(() => {
     refresh()
@@ -177,6 +188,17 @@ export default function CardsPage() {
     })
   }, [cards, search, statusFilter, typeFilter, tierFilter])
 
+  useEffect(() => {
+    setPage(1)
+  }, [search, statusFilter, typeFilter, tierFilter, pageSize])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const paged = useMemo(() => {
+    const start = (safePage - 1) * pageSize
+    return filtered.slice(start, start + pageSize)
+  }, [filtered, safePage, pageSize])
+
   function openAdd() {
     setAddOpen(true)
     playCue('tap')
@@ -211,8 +233,8 @@ export default function CardsPage() {
       </div>
 
       <div className="card p-4 sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative min-w-0 flex-1">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative min-w-0 lg:flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
             <input
               value={search}
@@ -248,7 +270,7 @@ export default function CardsPage() {
               ))}
             </div>
             <select
-              className="input h-10"
+              className="h-10 !w-44 shrink-0 rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
             >
@@ -259,7 +281,7 @@ export default function CardsPage() {
               ))}
             </select>
             <select
-              className="input h-10"
+              className="h-10 !w-40 shrink-0 rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
               value={tierFilter}
               onChange={(e) => setTierFilter(e.target.value)}
             >
@@ -272,52 +294,92 @@ export default function CardsPage() {
           </div>
         </div>
 
-        <div className="mt-3 flex items-center justify-between text-xs text-ink-500">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-500">
           <div>
-            Showing <span className="font-semibold text-ink-700">{filtered.length}</span> of{' '}
-            <span className="font-semibold text-ink-700">{cards.length}</span> cards
+            Showing{' '}
+            <span className="font-semibold text-ink-700">
+              {filtered.length === 0 ? 0 : (safePage - 1) * pageSize + 1}
+              {'–'}
+              {Math.min(safePage * pageSize, filtered.length)}
+            </span>{' '}
+            of <span className="font-semibold text-ink-700">{filtered.length}</span> cards
             {memberCount > 0 ? ` · ${memberCount} members` : ''}
           </div>
-          {(statusFilter !== 'all' || typeFilter !== 'all' || tierFilter !== 'all' || search) && (
-            <button
-              onClick={() => {
-                setSearch('')
-                setStatusFilter('all')
-                setTypeFilter('all')
-                setTierFilter('all')
-              }}
-              className="text-xs font-semibold text-ink-700 hover:underline"
+          <div className="flex flex-wrap items-center gap-2">
+            {(statusFilter !== 'all' || typeFilter !== 'all' || tierFilter !== 'all' || search) && (
+              <button
+                onClick={() => {
+                  setSearch('')
+                  setStatusFilter('all')
+                  setTypeFilter('all')
+                  setTierFilter('all')
+                }}
+                className="text-xs font-semibold text-ink-700 hover:underline"
+              >
+                Reset filters
+              </button>
+            )}
+            <div
+              role="tablist"
+              aria-label="View mode"
+              className="inline-flex items-center rounded-pill border border-ink-200 bg-white p-0.5"
             >
-              Reset filters
-            </button>
-          )}
+              <button
+                role="tab"
+                aria-selected={viewMode === 'list'}
+                onClick={() => setViewMode('list')}
+                className={
+                  viewMode === 'list'
+                    ? 'inline-flex h-7 w-8 items-center justify-center rounded-pill bg-ink-900 text-white'
+                    : 'inline-flex h-7 w-8 items-center justify-center rounded-pill text-ink-500 hover:bg-ink-50'
+                }
+                title="List view"
+              >
+                <List className="h-3.5 w-3.5" />
+              </button>
+              <button
+                role="tab"
+                aria-selected={viewMode === 'grid'}
+                onClick={() => setViewMode('grid')}
+                className={
+                  viewMode === 'grid'
+                    ? 'inline-flex h-7 w-8 items-center justify-center rounded-pill bg-ink-900 text-white'
+                    : 'inline-flex h-7 w-8 items-center justify-center rounded-pill text-ink-500 hover:bg-ink-50'
+                }
+                title="Grid view"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[860px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-ink-100 text-[11px] uppercase tracking-wide text-ink-500">
-                <th className="py-2 pr-4 font-semibold">Card</th>
-                <th className="py-2 pr-4 font-semibold">Type</th>
-                <th className="py-2 pr-4 font-semibold">Assigned to</th>
-                <th className="py-2 pr-4 font-semibold">Status</th>
-                <th className="py-2 pr-4 text-right font-semibold">Balance</th>
-                <th className="py-2 pr-4 text-right font-semibold">Limits</th>
-                <th className="py-2 pr-4 font-semibold">Issued</th>
-                <th className="py-2 pr-4 font-semibold">Expires</th>
-                <th className="py-2 pr-4 font-semibold">Last transaction</th>
-                <th className="py-2 text-right font-semibold">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={10} className="py-10 text-center text-sm text-ink-500">
-                    No cards match the current filters.
-                  </td>
+        {viewMode === 'list' ? (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[860px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-ink-100 text-[11px] uppercase tracking-wide text-ink-500">
+                  <th className="py-2 pr-4 font-semibold">Card</th>
+                  <th className="py-2 pr-4 font-semibold">Type</th>
+                  <th className="py-2 pr-4 font-semibold">Assigned to</th>
+                  <th className="py-2 pr-4 font-semibold">Status</th>
+                  <th className="py-2 pr-4 text-right font-semibold">Balance</th>
+                  <th className="py-2 pr-4 text-right font-semibold">Limits</th>
+                  <th className="py-2 pr-4 font-semibold">Issued</th>
+                  <th className="py-2 pr-4 font-semibold">Expires</th>
+                  <th className="py-2 pr-4 font-semibold">Last transaction</th>
+                  <th className="py-2 text-right font-semibold">Actions</th>
                 </tr>
-              )}
-              {filtered.map((c) => {
+              </thead>
+              <tbody>
+                {paged.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="py-10 text-center text-sm text-ink-500">
+                      No cards match the current filters.
+                    </td>
+                  </tr>
+                )}
+                {paged.map((c) => {
                 const member = getMember(c.memberId)
                 const Icon = typeIcon(c.type)
                 return (
@@ -406,7 +468,31 @@ export default function CardsPage() {
               })}
             </tbody>
           </table>
-        </div>
+          </div>
+        ) : (
+          <div className="mt-4">
+            {paged.length === 0 ? (
+              <div className="grid place-items-center rounded-2xl border border-dashed border-ink-200 bg-ink-50/40 px-6 py-14 text-center text-sm text-ink-500">
+                No cards match the current filters.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {paged.map((c) => (
+                  <CardTile key={c.id} card={c} onOpen={() => navigate(`/app/cards/${c.id}`)} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <Pagination
+          page={safePage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={filtered.length}
+          onPageChange={setPage}
+          onPageSizeChange={(s) => setPageSize(s)}
+        />
       </div>
 
       {addOpen && (
@@ -443,6 +529,191 @@ function Stat({
     <div className="rounded-2xl border border-ink-100 bg-white p-3">
       <div className="text-[11px] uppercase tracking-wide text-ink-500">{label}</div>
       <div className={`mt-0.5 text-lg font-extrabold ${color}`}>{value}</div>
+    </div>
+  )
+}
+
+function CardTile({ card, onOpen }: { card: MembershipCard; onOpen: () => void }) {
+  const member = getMember(card.memberId)
+  const Icon = typeIcon(card.type)
+  const expired = isExpired(card)
+  const gradient =
+    card.type === 'gift'
+      ? 'from-rose-500 to-amber-500'
+      : card.type === 'corporate'
+      ? 'from-indigo-600 to-blue-500'
+      : card.type === 'virtual'
+      ? 'from-sky-500 to-cyan-400'
+      : 'from-ink-900 to-ink-700'
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group relative flex flex-col gap-3 rounded-2xl border border-ink-100 bg-white p-4 text-left shadow-soft transition-all hover:-translate-y-0.5 hover:border-ink-200 hover:shadow-card"
+    >
+      <div
+        className={`relative h-28 w-full overflow-hidden rounded-xl bg-gradient-to-br ${gradient} p-3 text-white`}
+      >
+        <div className="flex items-start justify-between">
+          <div className="grid h-8 w-8 place-items-center rounded-lg bg-white/15 backdrop-blur">
+            <Icon className="h-4 w-4" />
+          </div>
+          <StatusPill status={card.status} />
+        </div>
+        <div className="absolute bottom-3 left-3 right-3">
+          <div className="font-mono text-sm font-semibold tracking-wider">
+            {maskCardNumber(card.cardNumber)}
+          </div>
+          <div className="mt-0.5 flex items-center justify-between text-[10px] uppercase tracking-wide text-white/70">
+            <span>{card.id}</span>
+            <span>Exp {formatDate(card.expiresAt)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold text-ink-900">
+            {member?.name ?? 'Unassigned'}
+          </div>
+          <div className="truncate text-[11px] text-ink-500">{member?.email ?? 'No member linked'}</div>
+        </div>
+        <span className="shrink-0 rounded-pill border border-ink-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-ink-700">
+          {cardTypeLabel(card.type)}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 border-t border-ink-100 pt-3 text-[11px]">
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-ink-400">Balance</div>
+          <div className="font-bold text-ink-900">${card.balance.toFixed(0)}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-ink-400">Daily</div>
+          <div className="font-semibold text-ink-700">${card.dailyLimit.toFixed(0)}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-ink-400">Monthly</div>
+          <div className="font-semibold text-ink-700">${card.monthlyLimit.toFixed(0)}</div>
+        </div>
+      </div>
+
+      <div
+        className={`flex items-center justify-between text-[11px] ${
+          expired ? 'text-rose-600' : 'text-ink-500'
+        }`}
+      >
+        <span>Last used {formatRelative(card.lastTransactionAt)}</span>
+        <span className="inline-flex items-center gap-1 font-semibold text-ink-700 opacity-0 transition-opacity group-hover:opacity-100">
+          View <ArrowDownToLine className="h-3 w-3 rotate-180" />
+        </span>
+      </div>
+    </button>
+  )
+}
+
+function Pagination({
+  page,
+  totalPages,
+  pageSize,
+  totalItems,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  page: number
+  totalPages: number
+  pageSize: PageSize
+  totalItems: number
+  onPageChange: (p: number) => void
+  onPageSizeChange: (s: PageSize) => void
+}) {
+  if (totalItems === 0) return null
+  const first = (page - 1) * pageSize + 1
+  const last = Math.min(page * pageSize, totalItems)
+  const range = useMemo(() => {
+    const total = totalPages
+    const current = page
+    const span = 5
+    if (total <= span) return Array.from({ length: total }, (_, i) => i + 1)
+    const end = Math.min(total, current + 2)
+    const start = Math.max(1, end - span + 1)
+    return Array.from({ length: end - start + 1 }, (_, i) => start + i)
+  }, [totalPages, page])
+  const btn =
+    'inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-ink-200 bg-white px-2 text-xs font-semibold text-ink-700 transition-colors hover:bg-ink-50 disabled:cursor-not-allowed disabled:opacity-40'
+  const btnActive =
+    'inline-flex h-8 min-w-8 items-center justify-center rounded-lg bg-ink-900 px-2 text-xs font-semibold text-white'
+
+  return (
+    <div className="mt-4 flex flex-col-reverse items-stretch justify-between gap-3 border-t border-ink-100 pt-3 sm:flex-row sm:items-center">
+      <div className="flex flex-wrap items-center gap-3 text-xs text-ink-500">
+        <span>
+          <span className="font-semibold text-ink-700">
+            {first}–{last}
+          </span>{' '}
+          of <span className="font-semibold text-ink-700">{totalItems}</span>
+        </span>
+        <label className="inline-flex items-center gap-1.5">
+          Rows
+          <select
+            className="h-7 rounded-lg border border-ink-200 bg-white px-1.5 text-xs text-ink-700 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+            value={pageSize}
+            onChange={(e) => onPageSizeChange(Number(e.target.value) as PageSize)}
+          >
+            {[6, 12, 24, 48].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="flex items-center gap-1">
+        <button
+          className={btn}
+          onClick={() => onPageChange(1)}
+          disabled={page === 1}
+          aria-label="First page"
+        >
+          <ChevronsLeft className="h-3.5 w-3.5" />
+        </button>
+        <button
+          className={btn}
+          onClick={() => onPageChange(Math.max(1, page - 1))}
+          disabled={page === 1}
+          aria-label="Previous page"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
+        {range.map((p) => (
+          <button
+            key={p}
+            onClick={() => onPageChange(p)}
+            className={p === page ? btnActive : btn}
+            aria-current={p === page ? 'page' : undefined}
+          >
+            {p}
+          </button>
+        ))}
+        <button
+          className={btn}
+          onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+          disabled={page === totalPages}
+          aria-label="Next page"
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
+        <button
+          className={btn}
+          onClick={() => onPageChange(totalPages)}
+          disabled={page === totalPages}
+          aria-label="Last page"
+        >
+          <ChevronsRight className="h-3.5 w-3.5" />
+        </button>
+      </div>
     </div>
   )
 }

@@ -54,14 +54,42 @@ export type MembershipCardStatus =
 
 export type MembershipCardType = 'standard' | 'nfc' | 'virtual' | 'corporate' | 'gift'
 
+export type MemberStatus = 'active' | 'inactive' | 'suspended'
+export type MemberType = 'individual' | 'corporate' | 'staff'
+
+export interface MemberActivity {
+  id: string
+  memberId: string
+  type:
+    | 'created'
+    | 'updated'
+    | 'activated'
+    | 'deactivated'
+    | 'suspended'
+    | 'card_assigned'
+    | 'card_removed'
+    | 'note'
+    | 'login'
+  description: string
+  meta?: Record<string, string>
+  by?: string
+  at: string
+}
+
 export interface Member {
   id: string
   businessId: string
   name: string
   email?: string
   phone?: string
+  avatarColor?: string
   tier: string
+  type: MemberType
+  status: MemberStatus
+  notes?: string
+  address?: string
   joinedAt: string
+  lastActiveAt?: string
 }
 
 export interface MembershipCard {

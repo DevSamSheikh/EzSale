@@ -860,7 +860,7 @@ function BlockDrawer({
           </button>
           <button
             onClick={() => onSubmit(reason)}
-            className="flex-1 rounded-pill bg-rose-500 py-3 text-sm font-bold text-white shadow-soft hover:bg-rose-600"
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-pill bg-rose-500 py-3 text-sm font-bold text-white shadow-soft hover:bg-rose-600"
           >
             <ShieldOff className="h-4 w-4" /> Block card
           </button>

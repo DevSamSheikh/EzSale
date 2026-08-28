@@ -2,6 +2,7 @@ import type {
   CardActivity,
   CardDeposit,
   Member,
+  MemberActivity,
   MembershipCard,
   MembershipCardStatus,
   MembershipCardType,
@@ -13,6 +14,7 @@ const KEY_MEMBERS = 'ezsale:members'
 const KEY_CARDS = 'ezsale:cards'
 const KEY_ACTIVITY = 'ezsale:card-activity'
 const KEY_DEPOSITS = 'ezsale:card-deposits'
+const KEY_MEMBER_ACTIVITY = 'ezsale:member-activity'
 
 function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback
@@ -31,7 +33,11 @@ const SAMPLE_MEMBERS: Member[] = [
     email: 'sara.khan@example.com',
     phone: '+1 555 0142',
     tier: 'Gold',
+    type: 'individual',
+    status: 'active',
+    avatarColor: '#84eb0a',
     joinedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 90).toISOString(),
+    lastActiveAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
   },
   {
     id: 'm2',
@@ -40,7 +46,11 @@ const SAMPLE_MEMBERS: Member[] = [
     email: 'adil.raza@example.com',
     phone: '+1 555 0188',
     tier: 'Silver',
+    type: 'individual',
+    status: 'active',
+    avatarColor: '#6cc800',
     joinedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 60).toISOString(),
+    lastActiveAt: new Date(Date.now() - 1000 * 60 * 60 * 30).toISOString(),
   },
   {
     id: 'm3',
@@ -49,6 +59,9 @@ const SAMPLE_MEMBERS: Member[] = [
     email: 'maya.singh@example.com',
     phone: '+1 555 0211',
     tier: 'Bronze',
+    type: 'individual',
+    status: 'active',
+    avatarColor: '#559c00',
     joinedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(),
   },
   {
@@ -58,7 +71,11 @@ const SAMPLE_MEMBERS: Member[] = [
     email: 'daniel.park@example.com',
     phone: '+1 555 0298',
     tier: 'Gold',
+    type: 'individual',
+    status: 'inactive',
+    avatarColor: '#437800',
     joinedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 220).toISOString(),
+    lastActiveAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(),
   },
   {
     id: 'm5',
@@ -67,7 +84,11 @@ const SAMPLE_MEMBERS: Member[] = [
     email: 'fatima.h@example.com',
     phone: '+1 555 0320',
     tier: 'Silver',
+    type: 'corporate',
+    status: 'active',
+    avatarColor: '#84eb0a',
     joinedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 14).toISOString(),
+    lastActiveAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
   },
   {
     id: 'm6',
@@ -76,7 +97,86 @@ const SAMPLE_MEMBERS: Member[] = [
     email: 'junaid.k@example.com',
     phone: '+1 555 0344',
     tier: 'Gold',
+    type: 'corporate',
+    status: 'active',
+    avatarColor: '#6cc800',
     joinedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 180).toISOString(),
+    lastActiveAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 1).toISOString(),
+  },
+  {
+    id: 'm7',
+    businessId: 'preview',
+    name: 'Aisha Mehta',
+    email: 'aisha.m@example.com',
+    phone: '+1 555 0367',
+    tier: 'Bronze',
+    type: 'individual',
+    status: 'suspended',
+    avatarColor: '#3a414d',
+    joinedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 320).toISOString(),
+    notes: 'Suspended for non-payment.',
+  },
+  {
+    id: 'm8',
+    businessId: 'preview',
+    name: 'Hassan Ali',
+    email: 'hassan.ali@example.com',
+    phone: '+1 555 0389',
+    tier: 'Silver',
+    type: 'staff',
+    status: 'active',
+    avatarColor: '#84eb0a',
+    joinedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 45).toISOString(),
+    lastActiveAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
+  },
+  {
+    id: 'm9',
+    businessId: 'preview',
+    name: 'Priya Sharma',
+    email: 'priya.s@example.com',
+    phone: '+1 555 0412',
+    tier: 'Bronze',
+    type: 'individual',
+    status: 'active',
+    avatarColor: '#6cc800',
+    joinedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 8).toISOString(),
+  },
+  {
+    id: 'm10',
+    businessId: 'preview',
+    name: 'Omar Faruk',
+    email: 'omar.f@example.com',
+    phone: '+1 555 0435',
+    tier: 'Gold',
+    type: 'corporate',
+    status: 'active',
+    avatarColor: '#559c00',
+    joinedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 65).toISOString(),
+    lastActiveAt: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
+  },
+  {
+    id: 'm11',
+    businessId: 'preview',
+    name: 'Zara Iqbal',
+    email: 'zara.iqbal@example.com',
+    phone: '+1 555 0451',
+    tier: 'Silver',
+    type: 'individual',
+    status: 'inactive',
+    avatarColor: '#437800',
+    joinedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 400).toISOString(),
+  },
+  {
+    id: 'm12',
+    businessId: 'preview',
+    name: 'Liam Chen',
+    email: 'liam.chen@example.com',
+    phone: '+1 555 0478',
+    tier: 'Bronze',
+    type: 'individual',
+    status: 'active',
+    avatarColor: '#84eb0a',
+    joinedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(),
   },
 ]
 
@@ -265,6 +365,56 @@ const SAMPLE_ACTIVITY: CardActivity[] = [
   },
 ]
 
+const SAMPLE_MEMBER_ACTIVITY: MemberActivity[] = [
+  {
+    id: 'ma1',
+    memberId: 'm1',
+    type: 'created',
+    description: 'Account created.',
+    by: 'admin@ezsale.app',
+    at: new Date(now - day * 90).toISOString(),
+  },
+  {
+    id: 'ma2',
+    memberId: 'm1',
+    type: 'card_assigned',
+    description: 'Card #EZ-1000-4521 assigned.',
+    by: 'admin@ezsale.app',
+    at: new Date(now - day * 90 + 1000 * 60 * 10).toISOString(),
+  },
+  {
+    id: 'ma3',
+    memberId: 'm1',
+    type: 'login',
+    description: 'Signed in to the app.',
+    at: new Date(now - 1000 * 60 * 60 * 2).toISOString(),
+  },
+  {
+    id: 'ma4',
+    memberId: 'm3',
+    type: 'suspended',
+    description: 'Account suspended for review.',
+    by: 'admin@ezsale.app',
+    at: new Date(now - day * 5).toISOString(),
+  },
+  {
+    id: 'ma5',
+    memberId: 'm5',
+    type: 'updated',
+    description: 'Tier updated to Silver.',
+    by: 'admin@ezsale.app',
+    at: new Date(now - day * 14).toISOString(),
+  },
+  {
+    id: 'ma6',
+    memberId: 'm8',
+    type: 'card_assigned',
+    description: 'Card #EZ-1000-7700 assigned.',
+    by: 'admin@ezsale.app',
+    at: new Date(now - day * 20).toISOString(),
+  },
+]
+
 const SAMPLE_DEPOSITS: CardDeposit[] = [
   {
     id: 'd1',
@@ -327,6 +477,27 @@ function ensureSeeded() {
   if (!localStorage.getItem(KEY_DEPOSITS)) {
     localStorage.setItem(KEY_DEPOSITS, JSON.stringify(SAMPLE_DEPOSITS))
   }
+  if (!localStorage.getItem(KEY_MEMBER_ACTIVITY)) {
+    localStorage.setItem(KEY_MEMBER_ACTIVITY, JSON.stringify(SAMPLE_MEMBER_ACTIVITY))
+  }
+}
+
+function migrateMember(m: Partial<Member>): Member {
+  return {
+    id: m.id ?? uid('m'),
+    businessId: m.businessId ?? 'preview',
+    name: m.name ?? 'Unnamed',
+    email: m.email,
+    phone: m.phone,
+    avatarColor: m.avatarColor,
+    tier: m.tier ?? 'Bronze',
+    type: (m.type as Member['type']) ?? 'individual',
+    status: (m.status as Member['status']) ?? 'active',
+    notes: m.notes,
+    address: m.address,
+    joinedAt: m.joinedAt ?? new Date().toISOString(),
+    lastActiveAt: m.lastActiveAt,
+  }
 }
 
 function migrateCard(c: MembershipCard): MembershipCard {
@@ -342,7 +513,155 @@ function migrateCard(c: MembershipCard): MembershipCard {
 export function getMembers(): Member[] {
   if (typeof window === 'undefined') return SAMPLE_MEMBERS
   ensureSeeded()
-  return safeParse<Member[]>(localStorage.getItem(KEY_MEMBERS), SAMPLE_MEMBERS)
+  const list = safeParse<Partial<Member>[]>(
+    localStorage.getItem(KEY_MEMBERS),
+    SAMPLE_MEMBERS as Partial<Member>[],
+  )
+  return list.map((m) => migrateMember(m))
+}
+
+export function saveMembers(members: Member[]) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(KEY_MEMBERS, JSON.stringify(members))
+}
+
+export function updateMember(
+  memberId: string,
+  patch: Partial<Member>,
+  by: string = 'admin@ezsale.app',
+): Member | null {
+  const members = getMembers()
+  const idx = members.findIndex((m) => m.id === memberId)
+  if (idx < 0) return null
+  const next = { ...members[idx], ...patch }
+  members[idx] = next
+  saveMembers(members)
+  logMemberActivity(memberId, 'updated', 'Profile updated.', { by })
+  return next
+}
+
+export function setMemberStatus(
+  memberId: string,
+  status: Member['status'],
+  by: string = 'admin@ezsale.app',
+): Member | null {
+  const members = getMembers()
+  const idx = members.findIndex((m) => m.id === memberId)
+  if (idx < 0) return null
+  const prev = members[idx]
+  const next = { ...prev, status }
+  members[idx] = next
+  saveMembers(members)
+  const typeMap: Record<Member['status'], MemberActivity['type']> = {
+    active: 'activated',
+    inactive: 'deactivated',
+    suspended: 'suspended',
+  }
+  const labelMap: Record<Member['status'], string> = {
+    active: 'Account reactivated.',
+    inactive: 'Account deactivated.',
+    suspended: 'Account suspended.',
+  }
+  logMemberActivity(memberId, typeMap[status], labelMap[status], { by, meta: { from: prev.status, to: status } })
+  return next
+}
+
+export interface NewMemberInput {
+  name: string
+  email?: string
+  phone?: string
+  tier: string
+  type: Member['type']
+  status?: Member['status']
+  notes?: string
+  address?: string
+  avatarColor?: string
+}
+
+export function createMember(input: NewMemberInput, by: string = 'admin@ezsale.app'): Member {
+  const member: Member = migrateMember({
+    id: uid('m'),
+    businessId: 'preview',
+    name: input.name,
+    email: input.email,
+    phone: input.phone,
+    tier: input.tier,
+    type: input.type,
+    status: input.status ?? 'active',
+    notes: input.notes,
+    address: input.address,
+    avatarColor: input.avatarColor ?? '#84eb0a',
+    joinedAt: new Date().toISOString(),
+  })
+  const all = getMembers()
+  all.unshift(member)
+  saveMembers(all)
+  logMemberActivity(member.id, 'created', `Account created for ${member.name}.`, { by })
+  return member
+}
+
+function logMemberActivity(
+  memberId: string,
+  type: MemberActivity['type'],
+  description: string,
+  extra: Partial<MemberActivity> = {},
+) {
+  if (typeof window === 'undefined') return
+  const all = safeParse<MemberActivity[]>(
+    localStorage.getItem(KEY_MEMBER_ACTIVITY),
+    [],
+  )
+  all.unshift({
+    id: uid('mact'),
+    memberId,
+    type,
+    description,
+    at: new Date().toISOString(),
+    by: 'admin@ezsale.app',
+    ...extra,
+  })
+  localStorage.setItem(KEY_MEMBER_ACTIVITY, JSON.stringify(all))
+}
+
+export function logMemberCardAssigned(memberId: string, cardNumber: string, by?: string) {
+  logMemberActivity(memberId, 'card_assigned', `Card ${cardNumber} assigned.`, { by })
+}
+
+export function logMemberCardRemoved(memberId: string, cardNumber: string, by?: string) {
+  logMemberActivity(memberId, 'card_removed', `Card ${cardNumber} unassigned.`, { by })
+}
+
+export function getMemberActivity(memberId: string): MemberActivity[] {
+  if (typeof window === 'undefined') return []
+  return safeParse<MemberActivity[]>(localStorage.getItem(KEY_MEMBER_ACTIVITY), [])
+    .filter((a) => a.memberId === memberId)
+    .sort((a, b) => (a.at < b.at ? 1 : -1))
+}
+
+export function memberStatusLabel(s: Member['status']) {
+  switch (s) {
+    case 'active':
+      return 'Active'
+    case 'inactive':
+      return 'Inactive'
+    case 'suspended':
+      return 'Suspended'
+    default:
+      return s
+  }
+}
+
+export function memberTypeLabel(t: Member['type']) {
+  switch (t) {
+    case 'individual':
+      return 'Individual'
+    case 'corporate':
+      return 'Corporate'
+    case 'staff':
+      return 'Staff'
+    default:
+      return t
+  }
 }
 
 export function getMember(memberId: string | null | undefined): Member | null {
@@ -507,7 +826,8 @@ export function unassignCard(
 ): MembershipCard | null {
   const card = getCard(cardId)
   if (!card) return null
-  const member = getMember(card.memberId)
+  const memberId = card.memberId
+  const member = getMember(memberId)
   const next = updateCard(cardId, { memberId: null })
   if (next) {
     logActivity(
@@ -516,6 +836,31 @@ export function unassignCard(
       `Card unassigned${member ? ` from ${member.name}` : ''}.`,
       { by },
     )
+    if (memberId) logMemberCardRemoved(memberId, card.cardNumber, by)
+  }
+  return next
+}
+
+export function assignCardToMember(
+  cardId: string,
+  memberId: string,
+  by: string = 'admin@ezsale.app',
+): MembershipCard | null {
+  const card = getCard(cardId)
+  if (!card) return null
+  const member = getMember(memberId)
+  if (!member) return null
+  const previous = card.memberId
+  const next = updateCard(cardId, { memberId })
+  if (next) {
+    const verb = previous && previous !== memberId ? 'reassigned' : 'assigned'
+    logActivity(
+      cardId,
+      'assigned',
+      `Card ${verb}${member ? ` to ${member.name}` : ''}.`,
+      { by },
+    )
+    logMemberCardAssigned(memberId, card.cardNumber, by)
   }
   return next
 }

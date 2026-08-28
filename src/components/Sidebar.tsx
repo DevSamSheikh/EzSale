@@ -2,9 +2,10 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { Logo } from './Primitives'
 import { NavIcon } from './NavIcon'
-import { NAV_LINKS } from '../store'
+import { NAV_LINKS, memberTermPlural } from '../store'
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+  const term = memberTermPlural()
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-ink-100 bg-white">
       <div className="flex h-16 items-center px-5">
@@ -19,7 +20,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             className={({ isActive }) => (isActive ? 'nav-item-active' : 'nav-item')}
           >
             <NavIcon name={l.icon} />
-            <span>{l.label}</span>
+            <span>{l.to === '/app/users' ? term : l.label}</span>
           </NavLink>
         ))}
       </nav>
@@ -39,6 +40,7 @@ export function MobileSidebar({
   onClose: () => void
 }) {
   const location = useLocation()
+  const term = memberTermPlural()
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
@@ -61,7 +63,7 @@ export function MobileSidebar({
                 className={active ? 'nav-item-active' : 'nav-item'}
               >
                 <NavIcon name={l.icon} />
-                <span>{l.label}</span>
+                <span>{l.to === '/app/users' ? term : l.label}</span>
               </NavLink>
             )
           })}
