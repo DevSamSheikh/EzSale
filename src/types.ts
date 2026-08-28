@@ -44,7 +44,15 @@ export interface NavLink {
   icon: string
 }
 
-export type MembershipCardStatus = 'active' | 'inactive' | 'blocked' | 'expired'
+export type MembershipCardStatus =
+  | 'active'
+  | 'inactive'
+  | 'blocked'
+  | 'expired'
+  | 'lost'
+  | 'replaced'
+
+export type MembershipCardType = 'standard' | 'nfc' | 'virtual' | 'corporate' | 'gift'
 
 export interface Member {
   id: string
@@ -59,14 +67,54 @@ export interface Member {
 export interface MembershipCard {
   id: string
   businessId: string
-  memberId: string
+  memberId: string | null
   cardNumber: string
+  nfcUid?: string
+  type: MembershipCardType
   status: MembershipCardStatus
   balance: number
   dailyLimit: number
   monthlyLimit: number
-  expiresAt: string
   issuedAt: string
+  expiresAt: string
+  lastTransactionAt?: string
+  lastTransactionId?: string
+  replacedBy?: string
+  replaces?: string
+}
+
+export interface CardActivity {
+  id: string
+  cardId: string
+  type:
+    | 'created'
+    | 'activated'
+    | 'deactivated'
+    | 'blocked'
+    | 'lost'
+    | 'replaced'
+    | 'unassigned'
+    | 'assigned'
+    | 'deposit'
+    | 'transaction'
+    | 'topup'
+    | 'expiry_warning'
+  description: string
+  amount?: number
+  meta?: Record<string, string>
+  by?: string
+  at: string
+}
+
+export interface CardDeposit {
+  id: string
+  cardId: string
+  amount: number
+  method: 'cash' | 'card' | 'bank' | 'wallet'
+  reference?: string
+  by?: string
+  at: string
+  note?: string
 }
 
 export type PaymentMethod = 'cash' | 'card' | 'bank' | 'wallet' | 'membership'

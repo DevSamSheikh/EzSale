@@ -8,10 +8,12 @@ import SetupWizard from './pages/SetupWizard'
 import DashboardPage from './pages/app/DashboardPage'
 import POSPage from './pages/app/POSPage'
 import POSPaymentPage from './pages/app/POSPaymentPage'
+import POSReceiptPage from './pages/app/POSReceiptPage'
 import ProductsPage from './pages/app/ProductsPage'
 import OrdersPage from './pages/app/OrdersPage'
 import UsersPage from './pages/app/UsersPage'
 import CardsPage from './pages/app/CardsPage'
+import CardDetailsPage from './pages/app/CardDetailsPage'
 import DepositsPage from './pages/app/DepositsPage'
 import TransactionsPage from './pages/app/TransactionsPage'
 import ReportsPage from './pages/app/ReportsPage'
@@ -72,11 +74,12 @@ export default function App() {
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="pos" element={<POSPage />} />
           <Route path="pos/payment" element={<POSPaymentPage />} />
-          <Route path="pos/success/:txnId" element={<POSPaymentPage />} />
+          <Route path="pos/receipt/:txnId" element={<POSReceiptPage />} />
           <Route path="products" element={<ProductsPage />} />
           <Route path="orders" element={<OrdersPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="cards" element={<CardsPage />} />
+          <Route path="cards/:cardId" element={<CardDetailsPage />} />
           <Route path="deposits" element={<DepositsPage />} />
           <Route path="transactions" element={<TransactionsPage />} />
           <Route path="reports" element={<ReportsPage />} />

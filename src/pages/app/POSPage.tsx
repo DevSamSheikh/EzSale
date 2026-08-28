@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Heart,
   Minus,
+  Percent,
   Plus,
   Search,
   ShoppingBag,
@@ -11,6 +12,8 @@ import {
   Trash2,
   X,
   CheckCircle2,
+  DollarSign,
+  ArrowUp,
 } from 'lucide-react'
 import {
   addToCart,
@@ -24,6 +27,31 @@ import {
 } from '../../pos-store'
 import { POSNavbar } from '../../components/POSNavbar'
 import { playCue } from '../../audio'
+
+type PromoId = 'none' | 'default' | 'first5' | 'weekend' | 'custom'
+type DiscountKind = 'percent' | 'amount'
+
+interface Promo {
+  label: string
+  kind: DiscountKind
+  value: number
+}
+
+const PROMOS: Record<PromoId, Promo> = {
+  none: { label: 'No discount', kind: 'percent', value: 0 },
+  default: { label: 'Promo Every User (10%)', kind: 'percent', value: 10 },
+  first5: { label: 'First 5% Off', kind: 'percent', value: 5 },
+  weekend: { label: 'Weekend 15% Off', kind: 'percent', value: 15 },
+  custom: { label: 'Custom discount', kind: 'percent', value: 0 },
+}
+
+function computeDiscount(subtotal: number, promo: Promo): number {
+  if (promo.value <= 0) return 0
+  if (promo.kind === 'percent') {
+    return Math.min(subtotal, Math.round((subtotal * promo.value) / 100))
+  }
+  return Math.min(subtotal, Math.round(promo.value))
+}
 
 type CategoryFilter = string
 
@@ -156,15 +184,15 @@ function CartItemRow({
   onRemove: () => void
 }) {
   return (
-    <div className="flex h-[120px] items-stretch gap-3 overflow-hidden rounded-2xl border border-ink-100 bg-white">
-      <div className="relative m-1 grid h-[111px] w-[111px] shrink-0 place-items-center overflow-hidden rounded-xl bg-ink-50">
+    <div className="flex h-[96px] items-stretch gap-3 overflow-hidden rounded-2xl border border-ink-100 bg-white">
+      <div className="relative m-1 grid h-[88px] w-[88px] shrink-0 place-items-center overflow-hidden rounded-xl bg-ink-50">
         <img
           src={product.image}
           alt={product.name}
           className="h-full w-full rounded-xl object-cover"
         />
       </div>
-      <div className="flex min-w-0 flex-1 flex-col justify-between py-2.5 pr-3">
+      <div className="flex min-w-0 flex-1 flex-col justify-between py-2 pr-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-bold text-ink-900">{product.name}</div>
@@ -178,25 +206,25 @@ function CartItemRow({
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
-        <div className="mt-2 flex items-center justify-between">
+        <div className="mt-1 flex items-center justify-between">
           <div className="text-xs text-ink-500">
             Total <span className="font-bold text-ink-900">{currency(product.price * qty)}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <button
               onClick={onDec}
-              className="grid h-7 w-7 place-items-center rounded-full border border-ink-200 bg-white text-ink-700 transition-colors hover:bg-ink-50"
+              className="grid h-6 w-6 place-items-center rounded-full border border-ink-200 bg-white text-ink-700 transition-colors hover:bg-ink-50"
               aria-label="Decrease"
             >
-              <Minus className="h-3.5 w-3.5" />
+              <Minus className="h-3 w-3" />
             </button>
-            <span className="min-w-5 text-center text-sm font-bold text-ink-900">{qty}</span>
+            <span className="min-w-4 text-center text-sm font-bold text-ink-900">{qty}</span>
             <button
               onClick={onInc}
-              className="grid h-7 w-7 place-items-center rounded-full bg-ink-900 text-white transition-colors hover:bg-ink-800"
+              className="grid h-6 w-6 place-items-center rounded-full bg-ink-900 text-white transition-colors hover:bg-ink-800"
               aria-label="Increase"
             >
-              <Plus className="h-3.5 w-3.5" />
+              <Plus className="h-3 w-3" />
             </button>
           </div>
         </div>
@@ -207,32 +235,180 @@ function CartItemRow({
 
 function CheckoutSummary({
   lines,
-  onClear,
+  promoLabel,
+  subtotal,
+  discount,
+  total,
   onCheckout,
+  onSelectPromo,
+  customKind,
+  customValue,
+  onCustomKind,
+  onCustomValue,
+  onApplyCustom,
 }: {
   lines: { p: POSProduct; qty: number }[]
-  onClear: () => void
+  promoLabel: string
+  subtotal: number
+  discount: number
+  total: number
   onCheckout: () => void
+  onSelectPromo: (id: PromoId) => void
+  customKind: DiscountKind
+  customValue: string
+  onCustomKind: (k: DiscountKind) => void
+  onCustomValue: (v: string) => void
+  onApplyCustom: () => void
 }) {
-  const subtotal = lines.reduce((s, l) => s + l.p.price * l.qty, 0)
-  const discount = Math.round(subtotal * 0.1)
-  const total = subtotal - discount
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement | null>(null)
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+  const hasDiscount = discount > 0
+
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setOpen(false)
+        buttonRef.current?.focus()
+      }
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  function handleSelect(id: PromoId) {
+    onSelectPromo(id)
+    setOpen(false)
+    buttonRef.current?.focus()
+  }
+
+  function handleApply() {
+    onApplyCustom()
+    setOpen(false)
+    buttonRef.current?.focus()
+  }
+
+  function handleKeyToggle(e: React.KeyboardEvent<HTMLButtonElement>) {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault()
+      setOpen((o) => !o)
+    }
+  }
 
   return (
     <div className="space-y-3 border-t border-ink-100 px-5 py-4">
-      <div className="flex items-center justify-between rounded-2xl border border-ink-100 bg-ink-50/60 px-3 py-2.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white text-ink-700">
-            <Tag className="h-3.5 w-3.5" />
+      <div ref={ref} className="relative">
+        <div className="flex w-full items-center justify-between rounded-2xl border border-ink-100 bg-ink-50/60 px-3 py-2.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white text-ink-700">
+              <Tag className="h-3.5 w-3.5" />
+            </div>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold text-ink-900">{promoLabel}</div>
+              <div className="text-[10px] text-ink-500">Tap to change promo</div>
+            </div>
           </div>
-          <div className="truncate text-sm font-semibold text-ink-900">Promo Every User (10%)</div>
+          <button
+            ref={buttonRef}
+            type="button"
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+            onKeyDown={handleKeyToggle}
+            className="grid h-9 w-9 place-items-center rounded-xl border border-ink-200 bg-white text-ink-700 transition-colors hover:bg-ink-50 focus:bg-ink-50"
+            aria-label="Change promo"
+            title="Change promo"
+          >
+            <ArrowUp
+              className={`h-4 w-4 transition-transform duration-200 ${open ? '' : 'rotate-180'}`}
+            />
+          </button>
         </div>
-        <button
-          onClick={onClear}
-          className="shrink-0 rounded-pill border border-ink-200 bg-white px-3 py-1 text-xs font-semibold text-ink-700 transition-colors hover:bg-ink-50"
-        >
-          Change Promo
-        </button>
+
+        {open && (
+          <div
+            role="listbox"
+            aria-label="Promo options"
+            className="absolute bottom-full left-0 right-0 z-30 mb-2 rounded-2xl border border-ink-100 bg-white p-2 shadow-pop"
+          >
+            <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-ink-400">
+              Predefined discounts
+            </div>
+            <div className="space-y-1">
+              {(['none', 'default', 'first5', 'weekend'] as PromoId[]).map((id) => {
+                const p = PROMOS[id]
+                return (
+                  <button
+                    key={id}
+                    role="option"
+                    aria-selected={promoLabel === p.label}
+                    onClick={() => handleSelect(id)}
+                    className="flex w-full items-center justify-between rounded-xl px-2 py-2 text-left text-sm hover:bg-ink-50 focus:bg-ink-50 focus:outline-none"
+                  >
+                    <span className="font-semibold text-ink-900">{p.label}</span>
+                    <span className="text-xs text-ink-500">
+                      {p.value > 0 ? `-${p.value}%` : '—'}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="mt-2 border-t border-ink-100 pt-2">
+              <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-ink-400">
+                Custom discount
+              </div>
+              <div className="flex items-center gap-1.5 px-1">
+                <div className="inline-flex shrink-0 overflow-hidden rounded-xl border border-ink-200 bg-white">
+                  <button
+                    onClick={() => onCustomKind('percent')}
+                    aria-pressed={customKind === 'percent'}
+                    className={`grid h-8 w-8 place-items-center transition-colors focus:outline-none ${
+                      customKind === 'percent' ? 'bg-ink-900 text-white' : 'text-ink-500 hover:bg-ink-50'
+                    }`}
+                    aria-label="Percent"
+                    title="Percentage"
+                  >
+                    <Percent className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => onCustomKind('amount')}
+                    aria-pressed={customKind === 'amount'}
+                    className={`grid h-8 w-8 place-items-center transition-colors focus:outline-none ${
+                      customKind === 'amount' ? 'bg-ink-900 text-white' : 'text-ink-500 hover:bg-ink-50'
+                    }`}
+                    aria-label="Cash"
+                    title="Cash amount"
+                  >
+                    <DollarSign className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  value={customValue}
+                  onChange={(e) => onCustomValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleApply()
+                  }}
+                  placeholder="0"
+                  aria-label="Custom discount value"
+                  className="input h-8 w-full"
+                />
+                <button onClick={handleApply} className="btn-primary h-8 shrink-0 rounded-xl px-3 text-xs">
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="space-y-1.5 px-1 text-sm">
@@ -240,10 +416,12 @@ function CheckoutSummary({
           <span>Total Product Price</span>
           <span className="font-semibold text-ink-900">{currency(subtotal)}</span>
         </div>
-        <div className="flex items-center justify-between text-ink-600">
-          <span>Discount</span>
-          <span className="font-semibold text-ink-900">-{currency(discount)}</span>
-        </div>
+        {hasDiscount && (
+          <div className="flex items-center justify-between text-ink-600">
+            <span>Discount</span>
+            <span className="font-semibold text-ink-900">-{currency(discount)}</span>
+          </div>
+        )}
         <div className="mt-2 flex items-center justify-between border-t border-dashed border-ink-200 pt-2 text-base font-bold text-ink-900">
           <span>Total Payment</span>
           <span>{currency(total)}</span>
@@ -270,6 +448,16 @@ function CartPanel({
   onClear,
   onCheckout,
   onClose,
+  promoLabel,
+  subtotal,
+  discount,
+  total,
+  onSelectPromo,
+  customKind,
+  customValue,
+  onCustomKind,
+  onCustomValue,
+  onApplyCustom,
   variant = 'desktop',
 }: {
   products: POSProduct[]
@@ -280,6 +468,16 @@ function CartPanel({
   onClear: () => void
   onCheckout: () => void
   onClose?: () => void
+  promoLabel: string
+  subtotal: number
+  discount: number
+  total: number
+  onSelectPromo: (id: PromoId) => void
+  customKind: DiscountKind
+  customValue: string
+  onCustomKind: (k: DiscountKind) => void
+  onCustomValue: (v: string) => void
+  onApplyCustom: () => void
   variant?: 'desktop' | 'mobile'
 }) {
   const lines = useMemo(
@@ -294,7 +492,7 @@ function CartPanel({
   )
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-soft">
+    <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-soft">
       <div className="flex shrink-0 items-center justify-between border-b border-ink-100 px-5 py-4">
         <div className="flex items-center gap-2">
           <div className="text-lg font-bold tracking-tight text-ink-900">Products</div>
@@ -351,7 +549,20 @@ function CartPanel({
       </div>
 
       <div className="shrink-0">
-        <CheckoutSummary lines={lines} onClear={onClear} onCheckout={onCheckout} />
+        <CheckoutSummary
+          lines={lines}
+          promoLabel={promoLabel}
+          subtotal={subtotal}
+          discount={discount}
+          total={total}
+          onCheckout={onCheckout}
+          onSelectPromo={onSelectPromo}
+          customKind={customKind}
+          customValue={customValue}
+          onCustomKind={onCustomKind}
+          onCustomValue={onCustomValue}
+          onApplyCustom={onApplyCustom}
+        />
       </div>
     </div>
   )
@@ -365,6 +576,28 @@ export default function POSPage() {
   const [query, setQuery] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  const [promoId, setPromoId] = useState<PromoId>(() => {
+    if (typeof window === 'undefined') return 'default'
+    return (localStorage.getItem('ezsale:pos:promo') as PromoId) || 'default'
+  })
+  const [customKind, setCustomKind] = useState<DiscountKind>(() => {
+    if (typeof window === 'undefined') return 'percent'
+    return (localStorage.getItem('ezsale:pos:promoKind') as DiscountKind) || 'percent'
+  })
+  const [customValue, setCustomValue] = useState<string>(() => {
+    if (typeof window === 'undefined') return '0'
+    return localStorage.getItem('ezsale:pos:promoValue') || '0'
+  })
+
+  useEffect(() => {
+    localStorage.setItem('ezsale:pos:promo', promoId)
+  }, [promoId])
+  useEffect(() => {
+    localStorage.setItem('ezsale:pos:promoKind', customKind)
+  }, [customKind])
+  useEffect(() => {
+    localStorage.setItem('ezsale:pos:promoValue', customValue)
+  }, [customValue])
 
   useEffect(() => {
     setProducts(getProducts())
@@ -408,6 +641,24 @@ export default function POSPage() {
     return m
   }, [cart])
 
+  const promo: Promo =
+    promoId === 'custom'
+      ? {
+          label:
+            customKind === 'percent'
+              ? `Custom (${customValue || 0}%)`
+              : `Custom ($${customValue || 0})`,
+          kind: customKind,
+          value: Math.max(0, Number(customValue) || 0),
+        }
+      : PROMOS[promoId]
+  const subtotal = cart.reduce((s, c) => {
+    const p = products.find((x) => x.id === c.productId)
+    return p ? s + p.price * c.qty : s
+  }, 0)
+  const discount = computeDiscount(subtotal, promo)
+  const total = Math.max(0, subtotal - discount)
+
   function refreshCart() {
     setCart(getCart())
   }
@@ -442,6 +693,20 @@ export default function POSPage() {
   function handleCheckout() {
     if (cart.length === 0) return
     navigate('/app/pos/payment')
+  }
+  function handleSelectPromo(id: PromoId) {
+    setPromoId(id)
+    if (id === 'custom') {
+      setToast('Enter a custom discount')
+    } else {
+      setToast(`Promo: ${PROMOS[id].label}`)
+    }
+    playCue('tap')
+  }
+  function handleApplyCustom() {
+    setPromoId('custom')
+    setToast('Custom discount applied')
+    playCue('success')
   }
   function toggleFav(id: string) {
     const next = products.map((p) => (p.id === id ? { ...p, favorite: !p.favorite } : p))
@@ -521,8 +786,8 @@ export default function POSPage() {
             </div>
           </section>
 
-          {/* Cart panel (desktop) */}
-          <aside className="hidden min-h-0 lg:flex">
+          {/* Right cart panel (desktop) */}
+          <aside className="hidden h-full min-h-0 w-full lg:flex">
             <CartPanel
               products={products}
               cart={cart}
@@ -531,6 +796,16 @@ export default function POSPage() {
               onRemove={handleRemove}
               onClear={handleClear}
               onCheckout={handleCheckout}
+              promoLabel={promo.label}
+              subtotal={subtotal}
+              discount={discount}
+              total={total}
+              onSelectPromo={handleSelectPromo}
+              customKind={customKind}
+              customValue={customValue}
+              onCustomKind={setCustomKind}
+              onCustomValue={setCustomValue}
+              onApplyCustom={handleApplyCustom}
               variant="desktop"
             />
           </aside>
@@ -567,8 +842,18 @@ export default function POSPage() {
                 onRemove={handleRemove}
                 onClear={handleClear}
                 onCheckout={handleCheckout}
-                onClose={() => setDrawerOpen(false)}
+                promoLabel={promo.label}
+                subtotal={subtotal}
+                discount={discount}
+                total={total}
+                onSelectPromo={handleSelectPromo}
+                customKind={customKind}
+                customValue={customValue}
+                onCustomKind={setCustomKind}
+                onCustomValue={setCustomValue}
+                onApplyCustom={handleApplyCustom}
                 variant="mobile"
+                onClose={() => setDrawerOpen(false)}
               />
             </div>
           </div>
