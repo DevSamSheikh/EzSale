@@ -1,0 +1,138 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .pos-canvas {
+    height: calc(100dvh - 1.5rem);
+  }
+  .pos-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #d5d8dd transparent;
+  }
+  .pos-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+  .pos-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .pos-scroll::-webkit-scrollbar-thumb {
+    background-color: #d5d8dd;
+    border-radius: 9999px;
+  }
+  .pos-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: #b1b7c0;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-ink-50 text-ink-800 font-sans antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  *:focus-visible {
+    @apply outline-none ring-2 ring-brand-500/60 ring-offset-2 ring-offset-white;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white border border-ink-100 rounded-2xl shadow-soft;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-brand-500 text-ink-900 hover:bg-brand-400 shadow-soft;
+  }
+  .btn-secondary {
+    @apply btn bg-white border border-ink-200 text-ink-800 hover:bg-ink-50;
+  }
+  .btn-ghost {
+    @apply btn text-ink-700 hover:bg-ink-100;
+  }
+  .btn-danger {
+    @apply btn bg-red-500 text-white hover:bg-red-600;
+  }
+  .input {
+    @apply w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-800 placeholder:text-ink-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20;
+  }
+  .label {
+    @apply block text-sm font-medium text-ink-700 mb-1.5;
+  }
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-pill border border-ink-200 bg-white px-3 py-1 text-xs font-medium text-ink-700 hover:bg-ink-50 transition-colors;
+  }
+  .pill-active {
+    @apply pill bg-ink-900 text-white border-ink-900 hover:bg-ink-800;
+  }
+  .nav-item {
+    @apply flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-600 hover:bg-ink-100 hover:text-ink-900 transition-colors;
+  }
+  .nav-item-active {
+    @apply nav-item bg-brand-500/10 text-ink-900 hover:bg-brand-500/15;
+  }
+  .nav-item-active .nav-icon {
+    @apply text-brand-600;
+  }
+  .radio-card {
+    @apply flex items-start gap-3 rounded-xl border border-ink-200 bg-white p-3 text-left transition-colors hover:bg-ink-50;
+  }
+  .radio-card-active {
+    @apply radio-card border-brand-500 bg-brand-50 ring-1 ring-brand-500/30;
+  }
+  .switch-track {
+    @apply relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border border-ink-200 bg-ink-200 transition-colors;
+  }
+  .switch-track-on {
+    @apply switch-track border-brand-500 bg-brand-500;
+  }
+  .switch-thumb {
+    @apply pointer-events-none absolute top-0.5 left-0.5 inline-block h-5 w-5 rounded-full bg-white shadow-soft transition-transform;
+  }
+  .switch-thumb-on {
+    @apply switch-thumb translate-x-5;
+  }
+  .pos-card {
+    @apply relative overflow-visible rounded-2xl border border-ink-100 bg-white pb-5 pl-3 pr-3 pt-3 transition-shadow hover:shadow-card;
+  }
+  .pos-card-image {
+    @apply relative aspect-square w-full overflow-hidden rounded-xl bg-ink-50;
+  }
+  .pos-badge {
+    @apply absolute left-2 top-2 z-10 whitespace-pre-line rounded-md px-1.5 py-1 text-[9px] font-extrabold leading-tight tracking-wide text-white shadow-soft;
+  }
+  .pos-pill {
+    @apply inline-flex items-center gap-1.5 rounded-pill border border-ink-200 bg-white px-3.5 py-1.5 text-sm font-medium text-ink-700 transition-colors hover:bg-ink-50;
+  }
+  .pos-pill-active {
+    @apply pos-pill bg-brand-500 text-ink-900 border-brand-500 hover:bg-brand-400;
+  }
+  .pos-qty-btn {
+    @apply grid h-7 w-7 place-items-center rounded-full bg-ink-900 text-white transition-colors hover:bg-ink-800 disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .pos-qty-btn-light {
+    @apply grid h-7 w-7 place-items-center rounded-full border border-ink-200 bg-white text-ink-700 transition-colors hover:bg-ink-50 disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .pos-add-btn {
+    @apply grid h-8 w-8 place-items-center rounded-full bg-brand-500 text-ink-900 shadow-soft transition-colors hover:bg-brand-400;
+  }
+  .pos-fav-btn {
+    @apply grid h-7 w-7 place-items-center rounded-full bg-white/90 backdrop-blur text-ink-400 transition-colors hover:text-red-500;
+  }
+  .pos-fav-btn-on {
+    @apply pos-fav-btn text-red-500;
+  }
+}
