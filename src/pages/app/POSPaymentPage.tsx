@@ -823,7 +823,7 @@ function MembershipPanel({
 
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat label="Card" value={lookup.card.cardNumber} mono />
-            <Stat label="Tier" value={lookup.member.tier} />
+            <Stat label="Tier" value={lookup.card.tier} />
             <Stat
               label="Available balance"
               value={currency(lookup.card.balance)}

@@ -188,7 +188,7 @@ export default function UsersPage() {
 
   const tiers = useMemo(() => {
     const set = new Set<string>()
-    getMembers().forEach((m) => set.add(m.tier))
+    getCards().forEach((c) => set.add(c.tier))
     return ['all', ...Array.from(set)]
   }, [members])
 
@@ -223,6 +223,16 @@ export default function UsersPage() {
     return map
   }, [cards])
 
+  const tierByMember = useMemo(() => {
+    const map = new Map<string, string>()
+    cards.forEach((c) => {
+      if (c.memberId) {
+        if (!map.has(c.memberId)) map.set(c.memberId, c.tier)
+      }
+    })
+    return map
+  }, [cards])
+
   const stats = useMemo(() => {
     const total = members.length
     const active = members.filter((m) => m.status === 'active').length
@@ -238,7 +248,7 @@ export default function UsersPage() {
     return members.filter((m) => {
       if (statusFilter !== 'all' && m.status !== statusFilter) return false
       if (typeFilter !== 'all' && m.type !== typeFilter) return false
-      if (tierFilter !== 'all' && m.tier !== tierFilter) return false
+      if (tierFilter !== 'all' && (tierByMember.get(m.id) ?? 'Bronze') !== tierFilter) return false
       if (quickFilter !== 'all') {
         const memberCards = cardsByMember.get(m.id) ?? []
         if (quickFilter === 'card_assigned' && memberCards.length === 0) return false
@@ -251,7 +261,7 @@ export default function UsersPage() {
         if (quickFilter === 'suspended' && m.status !== 'suspended') return false
       }
       if (q) {
-        const hay = [m.name, m.email, m.phone, m.id, m.tier].filter(Boolean).join(' ').toLowerCase()
+        const hay = [m.name, m.email, m.phone, m.id, tierByMember.get(m.id) ?? ''].filter(Boolean).join(' ').toLowerCase()
         if (!hay.includes(q)) return false
       }
       return true
@@ -528,7 +538,7 @@ export default function UsersPage() {
                               {m.name}
                             </div>
                             <div className="truncate text-[11px] text-ink-500">
-                              {m.tier} · {m.id}
+                              {tierByMember.get(m.id) ?? 'Bronze'} · {m.id}
                             </div>
                           </div>
                         </Link>
@@ -612,6 +622,7 @@ export default function UsersPage() {
                   <UserTile
                     key={m.id}
                     member={m}
+                    tier={tierByMember.get(m.id) ?? 'Bronze'}
                     cardCount={(cardsByMember.get(m.id) ?? []).length}
                     balance={balanceByMember.get(m.id) ?? 0}
                     totalSpent={totalsByMember.get(m.id) ?? 0}
@@ -698,12 +709,14 @@ function Stat({
 
 function UserTile({
   member,
+  tier,
   cardCount,
   balance,
   totalSpent,
   onOpen,
 }: {
   member: Member
+  tier: string
   cardCount: number
   balance: number
   totalSpent: number
@@ -720,7 +733,7 @@ function UserTile({
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-ink-900">{member.name}</div>
           <div className="truncate text-[11px] text-ink-500">
-            {member.tier} · {memberTypeLabel(member.type)}
+            {tier} · {memberTypeLabel(member.type)}
           </div>
         </div>
         <StatusPill status={member.status} />
@@ -958,7 +971,6 @@ function UserDrawer({
   const [name, setName] = useState(member?.name ?? '')
   const [email, setEmail] = useState(member?.email ?? '')
   const [phone, setPhone] = useState(member?.phone ?? '')
-  const [tier, setTier] = useState(member?.tier ?? 'Bronze')
   const [type, setType] = useState<Member['type']>(member?.type ?? 'individual')
   const [status, setStatus] = useState<Member['status']>(member?.status ?? 'active')
   const [notes, setNotes] = useState(member?.notes ?? '')
@@ -980,7 +992,6 @@ function UserDrawer({
         name: name.trim(),
         email: email.trim() || undefined,
         phone: phone.trim() || undefined,
-        tier,
         type,
         status,
         notes: notes.trim() || undefined,
@@ -992,7 +1003,6 @@ function UserDrawer({
         name: name.trim(),
         email: email.trim() || undefined,
         phone: phone.trim() || undefined,
-        tier,
         type,
         status,
         notes: notes.trim() || undefined,
@@ -1079,16 +1089,7 @@ function UserDrawer({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="label">Tier</label>
-              <select className="input" value={tier} onChange={(e) => setTier(e.target.value)}>
-                <option>Bronze</option>
-                <option>Silver</option>
-                <option>Gold</option>
-                <option>Platinum</option>
-              </select>
-            </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-1">
             <div>
               <label className="label">Status</label>
               <select

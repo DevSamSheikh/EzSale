@@ -4,6 +4,7 @@ import { Bell, ChevronDown, LogOut, Menu, Plus, Search, Settings as Cog, User } 
 import { Logo } from './Primitives'
 import { NavIcon } from './NavIcon'
 import { BusinessTypeIcon } from '../icons'
+import { GlobalSearchMenu } from './GlobalSearchMenu'
 import { BUSINESS_TYPES, getBusiness, getAuth, clearAuth, NAV_LINKS } from '../store'
 
 const DEMO_BUSINESSES = [
@@ -19,7 +20,8 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
   const [bizOpen, setBizOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const [userOpen, setUserOpen] = useState(false)
-  const [query, setQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const bizRef = useRef<HTMLDivElement | null>(null)
   const notifRef = useRef<HTMLDivElement | null>(null)
@@ -34,6 +36,29 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
   }, [])
+
+  useEffect(() => {
+    const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform)
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearchOpen(true)
+      } else if (e.key === '/' && !searchOpen) {
+        const target = e.target as HTMLElement | null
+        const tag = target?.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return
+        e.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [searchOpen])
+
+  const shortcutLabel = (() => {
+    if (typeof navigator === 'undefined') return 'Ctrl K'
+    return /Mac|iPod|iPhone|iPad/.test(navigator.platform) ? '⌘ K' : 'Ctrl K'
+  })()
 
   const currentName = business?.name ?? 'Bistro Aurora'
 
@@ -104,18 +129,29 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
         )}
       </div>
 
-      {/* Search */}
-      <div className="ml-auto hidden flex-1 max-w-md md:block">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search products, orders, members…"
-            className="input pl-9"
-          />
-        </div>
-      </div>
+      {/* Search trigger */}
+      <button
+        type="button"
+        onClick={() => setSearchOpen(true)}
+        className="ml-auto hidden w-full max-w-md items-center gap-2 rounded-xl border border-ink-200 bg-white px-3 py-1.5 text-left text-sm text-ink-500 shadow-soft transition-colors hover:border-ink-300 hover:bg-ink-50 md:flex"
+        aria-label={`Open search (${shortcutLabel})`}
+      >
+        <Search className="h-4 w-4 text-ink-400" />
+        <span className="flex-1 truncate">Search products, orders, members…</span>
+        <kbd className="inline-flex items-center gap-0.5 rounded border border-ink-200 bg-ink-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-ink-500">
+          {shortcutLabel}
+        </kbd>
+      </button>
+
+      <GlobalSearchMenu
+        open={searchOpen}
+        query={searchQuery}
+        onQueryChange={setSearchQuery}
+        onClose={() => {
+          setSearchOpen(false)
+          setSearchQuery('')
+        }}
+      />
 
       <div className="ml-auto flex items-center gap-1 md:ml-2">
         {/* Quick add */}

@@ -32,7 +32,7 @@ const SAMPLE_MEMBERS: Member[] = [
     name: 'Sara Khan',
     email: 'sara.khan@example.com',
     phone: '+1 555 0142',
-    tier: 'Gold',
+    password: '1234',
     type: 'individual',
     status: 'active',
     avatarColor: '#84eb0a',
@@ -45,7 +45,7 @@ const SAMPLE_MEMBERS: Member[] = [
     name: 'Adil Raza',
     email: 'adil.raza@example.com',
     phone: '+1 555 0188',
-    tier: 'Silver',
+    password: '1234',
     type: 'individual',
     status: 'active',
     avatarColor: '#6cc800',
@@ -58,7 +58,7 @@ const SAMPLE_MEMBERS: Member[] = [
     name: 'Maya Singh',
     email: 'maya.singh@example.com',
     phone: '+1 555 0211',
-    tier: 'Bronze',
+    password: '1234',
     type: 'individual',
     status: 'active',
     avatarColor: '#559c00',
@@ -70,7 +70,7 @@ const SAMPLE_MEMBERS: Member[] = [
     name: 'Daniel Park',
     email: 'daniel.park@example.com',
     phone: '+1 555 0298',
-    tier: 'Gold',
+    password: '1234',
     type: 'individual',
     status: 'inactive',
     avatarColor: '#437800',
@@ -83,7 +83,7 @@ const SAMPLE_MEMBERS: Member[] = [
     name: 'Fatima Hussain',
     email: 'fatima.h@example.com',
     phone: '+1 555 0320',
-    tier: 'Silver',
+    password: '1234',
     type: 'corporate',
     status: 'active',
     avatarColor: '#84eb0a',
@@ -96,7 +96,7 @@ const SAMPLE_MEMBERS: Member[] = [
     name: 'Junaid Khan',
     email: 'junaid.k@example.com',
     phone: '+1 555 0344',
-    tier: 'Gold',
+    password: '1234',
     type: 'corporate',
     status: 'active',
     avatarColor: '#6cc800',
@@ -109,7 +109,7 @@ const SAMPLE_MEMBERS: Member[] = [
     name: 'Aisha Mehta',
     email: 'aisha.m@example.com',
     phone: '+1 555 0367',
-    tier: 'Bronze',
+    password: '1234',
     type: 'individual',
     status: 'suspended',
     avatarColor: '#3a414d',
@@ -122,7 +122,7 @@ const SAMPLE_MEMBERS: Member[] = [
     name: 'Hassan Ali',
     email: 'hassan.ali@example.com',
     phone: '+1 555 0389',
-    tier: 'Silver',
+    password: '1234',
     type: 'staff',
     status: 'active',
     avatarColor: '#84eb0a',
@@ -135,7 +135,7 @@ const SAMPLE_MEMBERS: Member[] = [
     name: 'Priya Sharma',
     email: 'priya.s@example.com',
     phone: '+1 555 0412',
-    tier: 'Bronze',
+    password: '1234',
     type: 'individual',
     status: 'active',
     avatarColor: '#6cc800',
@@ -147,7 +147,7 @@ const SAMPLE_MEMBERS: Member[] = [
     name: 'Omar Faruk',
     email: 'omar.f@example.com',
     phone: '+1 555 0435',
-    tier: 'Gold',
+    password: '1234',
     type: 'corporate',
     status: 'active',
     avatarColor: '#559c00',
@@ -160,7 +160,7 @@ const SAMPLE_MEMBERS: Member[] = [
     name: 'Zara Iqbal',
     email: 'zara.iqbal@example.com',
     phone: '+1 555 0451',
-    tier: 'Silver',
+    password: '1234',
     type: 'individual',
     status: 'inactive',
     avatarColor: '#437800',
@@ -172,7 +172,7 @@ const SAMPLE_MEMBERS: Member[] = [
     name: 'Liam Chen',
     email: 'liam.chen@example.com',
     phone: '+1 555 0478',
-    tier: 'Bronze',
+    password: '1234',
     type: 'individual',
     status: 'active',
     avatarColor: '#84eb0a',
@@ -192,6 +192,7 @@ const SAMPLE_CARDS: MembershipCard[] = [
     nfcUid: '04:A3:BC:11:80:5F:90',
     type: 'nfc',
     status: 'active',
+    tier: 'Gold',
     balance: 250,
     dailyLimit: 500,
     monthlyLimit: 5000,
@@ -207,6 +208,7 @@ const SAMPLE_CARDS: MembershipCard[] = [
     nfcUid: '04:7C:1A:2D:33:9E:01',
     type: 'nfc',
     status: 'active',
+    tier: 'Silver',
     balance: 45,
     dailyLimit: 200,
     monthlyLimit: 2000,
@@ -222,6 +224,7 @@ const SAMPLE_CARDS: MembershipCard[] = [
     nfcUid: '04:11:22:33:44:55:66',
     type: 'standard',
     status: 'blocked',
+    tier: 'Bronze',
     balance: 120,
     dailyLimit: 150,
     monthlyLimit: 1500,
@@ -236,6 +239,7 @@ const SAMPLE_CARDS: MembershipCard[] = [
     nfcUid: '04:AA:BB:CC:DD:EE:FF',
     type: 'nfc',
     status: 'expired',
+    tier: 'Gold',
     balance: 300,
     dailyLimit: 800,
     monthlyLimit: 8000,
@@ -251,6 +255,7 @@ const SAMPLE_CARDS: MembershipCard[] = [
     nfcUid: '04:9F:8E:7D:6C:5B:4A',
     type: 'virtual',
     status: 'inactive',
+    tier: 'Silver',
     balance: 0,
     dailyLimit: 100,
     monthlyLimit: 1000,
@@ -265,6 +270,7 @@ const SAMPLE_CARDS: MembershipCard[] = [
     nfcUid: '04:12:34:56:78:9A:BC',
     type: 'corporate',
     status: 'lost',
+    tier: 'Gold',
     balance: 800,
     dailyLimit: 1500,
     monthlyLimit: 15000,
@@ -280,6 +286,7 @@ const SAMPLE_CARDS: MembershipCard[] = [
     nfcUid: '04:FE:DC:BA:98:76:54',
     type: 'nfc',
     status: 'active',
+    tier: 'Gold',
     balance: 800,
     dailyLimit: 1500,
     monthlyLimit: 15000,
@@ -483,21 +490,37 @@ function ensureSeeded() {
 }
 
 function migrateMember(m: Partial<Member>): Member {
-  return {
+  const out: Member = {
     id: m.id ?? uid('m'),
     businessId: m.businessId ?? 'preview',
+    slug: m.slug,
     name: m.name ?? 'Unnamed',
     email: m.email,
     phone: m.phone,
     avatarColor: m.avatarColor,
-    tier: m.tier ?? 'Bronze',
+    password: m.password,
     type: (m.type as Member['type']) ?? 'individual',
     status: (m.status as Member['status']) ?? 'active',
     notes: m.notes,
     address: m.address,
     joinedAt: m.joinedAt ?? new Date().toISOString(),
     lastActiveAt: m.lastActiveAt,
+    lastLoginAt: m.lastLoginAt,
   }
+  if (!out.slug) out.slug = slugify(out.name, out.id)
+  return out
+}
+
+export function slugify(name: string, fallbackId?: string): string {
+  const base = name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32)
+  if (base) return base
+  return (fallbackId ?? 'user').toLowerCase().replace(/[^a-z0-9]+/g, '-')
 }
 
 function migrateCard(c: MembershipCard): MembershipCard {
@@ -505,6 +528,7 @@ function migrateCard(c: MembershipCard): MembershipCard {
     ...c,
     type: c.type ?? 'standard',
     memberId: c.memberId ?? null,
+    tier: c.tier ?? 'Bronze',
   }
   if (c.nfcUid !== undefined) out.nfcUid = c.nfcUid
   return out
@@ -566,11 +590,34 @@ export function setMemberStatus(
   return next
 }
 
+export const TIERS = ['Bronze', 'Silver', 'Gold', 'Platinum'] as const
+export type Tier = (typeof TIERS)[number]
+
+export function getMemberTier(memberId: string | null | undefined): string {
+  if (!memberId) return 'Bronze'
+  const cards = getCardsByMember(memberId)
+  const primary = cards.find((c) => c.status !== 'replaced') ?? cards[0]
+  return primary?.tier ?? 'Bronze'
+}
+
+export function verifyMemberPassword(
+  identifier: string | null | undefined,
+  password: string,
+): { ok: true; member: Member } | { ok: false; reason: 'not_found' | 'wrong_password' | 'suspended' } {
+  const m = getMemberByIdentifier(identifier)
+  if (!m) return { ok: false, reason: 'not_found' }
+  if (m.status === 'suspended') return { ok: false, reason: 'suspended' }
+  const expected = m.password ?? '1234'
+  if ((password ?? '').trim() !== expected) return { ok: false, reason: 'wrong_password' }
+  updateMember(m.id, { lastLoginAt: new Date().toISOString() })
+  return { ok: true, member: m }
+}
+
 export interface NewMemberInput {
   name: string
   email?: string
   phone?: string
-  tier: string
+  password?: string
   type: Member['type']
   status?: Member['status']
   notes?: string
@@ -579,13 +626,21 @@ export interface NewMemberInput {
 }
 
 export function createMember(input: NewMemberInput, by: string = 'admin@ezsale.app'): Member {
+  const baseSlug = slugify(input.name)
+  const existing = new Set(getMembers().map((m) => (m.slug ?? '').toLowerCase()))
+  let slug = baseSlug
+  let n = 2
+  while (existing.has(slug)) {
+    slug = `${baseSlug}-${n++}`
+  }
   const member: Member = migrateMember({
     id: uid('m'),
     businessId: 'preview',
+    slug,
     name: input.name,
     email: input.email,
     phone: input.phone,
-    tier: input.tier,
+    password: input.password || '1234',
     type: input.type,
     status: input.status ?? 'active',
     notes: input.notes,
@@ -669,6 +724,31 @@ export function getMember(memberId: string | null | undefined): Member | null {
   return getMembers().find((m) => m.id === memberId) ?? null
 }
 
+export function getMemberBySlug(slug: string | null | undefined): Member | null {
+  if (!slug) return null
+  const target = slug.trim().toLowerCase()
+  return getMembers().find((m) => (m.slug ?? '').toLowerCase() === target) ?? null
+}
+
+export function getMemberByIdentifier(raw: string | null | undefined): Member | null {
+  if (!raw) return null
+  const q = raw.trim().toLowerCase()
+  if (!q) return null
+  const members = getMembers()
+  const bySlug = members.find((m) => (m.slug ?? '').toLowerCase() === q)
+  if (bySlug) return bySlug
+  const byEmail = members.find((m) => (m.email ?? '').toLowerCase() === q)
+  if (byEmail) return byEmail
+  const cleanPhone = q.replace(/[^0-9+]/g, '')
+  if (cleanPhone.length >= 4) {
+    const byPhone = members.find((m) => (m.phone ?? '').replace(/[^0-9+]/g, '') === cleanPhone)
+    if (byPhone) return byPhone
+  }
+  const byId = members.find((m) => m.id.toLowerCase() === q)
+  if (byId) return byId
+  return null
+}
+
 export function getCards(): MembershipCard[] {
   if (typeof window === 'undefined') return SAMPLE_CARDS
   ensureSeeded()
@@ -750,6 +830,7 @@ export interface NewCardInput {
   cardNumber: string
   nfcUid?: string
   type: MembershipCardType
+  tier: string
   memberId: string | null
   balance: number
   dailyLimit: number
@@ -767,6 +848,7 @@ export function createCard(input: NewCardInput, by: string = 'admin@ezsale.app')
     type: input.type,
     memberId: input.memberId,
     status: input.status,
+    tier: input.tier,
     balance: Math.max(0, input.balance),
     dailyLimit: input.dailyLimit,
     monthlyLimit: input.monthlyLimit,
@@ -886,6 +968,7 @@ export function replaceCard(
     nfcUid: undefined,
     type: old.type,
     status: 'active',
+    tier: old.tier,
     balance: input.transferBalance ? old.balance : 0,
     dailyLimit: old.dailyLimit,
     monthlyLimit: old.monthlyLimit,

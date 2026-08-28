@@ -20,6 +20,8 @@ import TransactionsPage from './pages/app/TransactionsPage'
 import ReportsPage from './pages/app/ReportsPage'
 import AnalyticsPage from './pages/app/AnalyticsPage'
 import SettingsPage from './pages/app/SettingsPage'
+import PortalLandingPage from './pages/portal/PortalLandingPage'
+import PortalDashboardPage from './pages/portal/PortalDashboardPage'
 import { getAuth, getBusiness } from './store'
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -88,6 +90,9 @@ export default function App() {
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
+        <Route path="/u/identify" element={<PortalLandingPage />} />
+        <Route path="/u/:slug" element={<PortalDashboardPage />} />
+        <Route path="/portal" element={<Navigate to="/u/identify" replace />} />
         <Route path="*" element={<Navigate to="/app/pos" replace />} />
       </Routes>
     </>

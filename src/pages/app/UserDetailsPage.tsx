@@ -220,6 +220,11 @@ export default function UserDetailsPage() {
     )
   }
 
+  const memberTier = useMemo(() => {
+    const primary = cards.find((c) => c.status !== 'replaced') ?? cards[0]
+    return primary?.tier ?? 'Bronze'
+  }, [cards])
+
   const stats = useMemo(() => {
     const totalBalance = cards.reduce((s, c) => s + c.balance, 0)
     const totalDeposits = deposits.reduce((s, d) => s + d.amount, 0)
@@ -295,7 +300,7 @@ export default function UserDetailsPage() {
     <div>
       <PageHeader
         title={member.name}
-        subtitle={`${memberTypeLabel(member.type)} · ${member.tier} tier · ${member.id}`}
+        subtitle={`${memberTypeLabel(member.type)} · ${memberTier} tier · ${member.id}`}
         actions={
           <>
             <Link to="/app/users" className="btn-secondary">
@@ -325,6 +330,7 @@ export default function UserDetailsPage() {
           member={member}
           stats={stats}
           cardCount={cards.length}
+          memberTier={memberTier}
           onAssignCard={() => setAssignOpen(true)}
         />
 
@@ -421,11 +427,13 @@ function ProfileSidebar({
   member,
   stats,
   cardCount,
+  memberTier,
   onAssignCard,
 }: {
   member: Member
   stats: { totalBalance: number; totalSpent: number; orderCount: number; totalDeposits: number }
   cardCount: number
+  memberTier: string
   onAssignCard: () => void
 }) {
   return (
@@ -437,7 +445,7 @@ function ProfileSidebar({
             <div className="min-w-0">
               <div className="truncate text-base font-bold">{member.name}</div>
               <div className="truncate text-xs text-white/70">
-                {memberTypeLabel(member.type)} · {member.tier}
+                {memberTypeLabel(member.type)} · {memberTier}
               </div>
             </div>
           </div>
@@ -1063,7 +1071,6 @@ function SettingsTab({
   const [name, setName] = useState(member.name)
   const [email, setEmail] = useState(member.email ?? '')
   const [phone, setPhone] = useState(member.phone ?? '')
-  const [tier, setTier] = useState(member.tier)
   const [type, setType] = useState<Member['type']>(member.type)
   const [status, setStatus] = useState<Member['status']>(member.status)
   const [notes, setNotes] = useState(member.notes ?? '')
@@ -1072,7 +1079,6 @@ function SettingsTab({
     setName(member.name)
     setEmail(member.email ?? '')
     setPhone(member.phone ?? '')
-    setTier(member.tier)
     setType(member.type)
     setStatus(member.status)
     setNotes(member.notes ?? '')
@@ -1081,19 +1087,13 @@ function SettingsTab({
   return (
     <div className="space-y-3 rounded-2xl border border-ink-100 bg-white p-5 shadow-soft">
       <div className="text-sm font-bold text-ink-900">Account settings</div>
+      <div className="rounded-xl border border-ink-100 bg-ink-50/50 p-3 text-[11px] text-ink-600">
+        Tier is set on the member's card. Open a card to change tier, limits, or status.
+      </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className="label">Full name</label>
           <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Tier</label>
-          <select className="input" value={tier} onChange={(e) => setTier(e.target.value)}>
-            <option>Bronze</option>
-            <option>Silver</option>
-            <option>Gold</option>
-            <option>Platinum</option>
-          </select>
         </div>
         <div>
           <label className="label">Email</label>
@@ -1149,7 +1149,6 @@ function SettingsTab({
               name: name.trim(),
               email: email.trim() || undefined,
               phone: phone.trim() || undefined,
-              tier,
               type,
               status,
               notes: notes.trim() || undefined,

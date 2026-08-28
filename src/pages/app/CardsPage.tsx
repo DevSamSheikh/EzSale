@@ -22,10 +22,12 @@ import {
   cardTypeLabel,
   createCard,
   getCards,
+  getCardsByMember,
   getMember,
   getMembers,
   maskCardNumber,
   suggestNextCardNumber,
+  TIERS,
 } from '../../card-store'
 import type {
   MembershipCard,
@@ -146,7 +148,7 @@ export default function CardsPage() {
 
   const tiers = useMemo(() => {
     const set = new Set<string>()
-    getMembers().forEach((m) => set.add(m.tier))
+    getCards().forEach((c) => set.add(c.tier))
     return ['all', ...Array.from(set)]
   }, [cards])
 
@@ -165,10 +167,7 @@ export default function CardsPage() {
     return cards.filter((c) => {
       if (statusFilter !== 'all' && c.status !== statusFilter) return false
       if (typeFilter !== 'all' && c.type !== typeFilter) return false
-      if (tierFilter !== 'all') {
-        const m = getMember(c.memberId)
-        if (!m || m.tier !== tierFilter) return false
-      }
+      if (tierFilter !== 'all' && c.tier !== tierFilter) return false
       if (q) {
         const member = getMember(c.memberId)
         const hay = [
@@ -729,6 +728,7 @@ function AddCardDrawer({
   const [nfcUid, setNfcUid] = useState('')
   const [type, setType] = useState<MembershipCardType>('nfc')
   const [memberId, setMemberId] = useState<string>('')
+  const [tier, setTier] = useState<string>('Bronze')
   const [balance, setBalance] = useState<string>('0')
   const [dailyLimit, setDailyLimit] = useState<string>('500')
   const [monthlyLimit, setMonthlyLimit] = useState<string>('5000')
@@ -743,6 +743,19 @@ function AddCardDrawer({
   const [tapHint, setTapHint] = useState(true)
 
   const members = useMemo(() => getMembers(), [])
+
+  function pickTierForMember(id: string) {
+    if (!id) {
+      setTier('Bronze')
+      return
+    }
+    const existing = getCardsByMember(id)
+    if (existing.length > 0) {
+      setTier(existing[0].tier)
+    } else {
+      setTier('Bronze')
+    }
+  }
 
   function simulateNfcRead() {
     if (nfcReading) return
@@ -779,6 +792,7 @@ function AddCardDrawer({
         cardNumber: cardNumber.trim().toUpperCase(),
         nfcUid: nfcUid.trim().toUpperCase() || undefined,
         type,
+        tier,
         memberId,
         balance: balanceN,
         dailyLimit: dailyN,
@@ -885,13 +899,16 @@ function AddCardDrawer({
             <label className="label">Assign to member</label>
             <select
               value={memberId}
-              onChange={(e) => setMemberId(e.target.value)}
+              onChange={(e) => {
+                setMemberId(e.target.value)
+                pickTierForMember(e.target.value)
+              }}
               className="input"
             >
               <option value="">Select a member…</option>
               {members.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.name} · {m.tier}
+                  {m.name}
                 </option>
               ))}
             </select>
@@ -910,6 +927,29 @@ function AddCardDrawer({
               <option value="active">Active — ready to use</option>
               <option value="inactive">Inactive — issue but don't enable</option>
             </select>
+          </div>
+
+          <div>
+            <label className="label">Tier</label>
+            <div className="grid grid-cols-4 gap-2">
+              {TIERS.map((t) => (
+                <button
+                  type="button"
+                  key={t}
+                  onClick={() => setTier(t)}
+                  className={
+                    tier === t
+                      ? 'rounded-2xl border border-brand-500 bg-brand-50 px-3 py-2 text-sm font-semibold text-ink-900 ring-1 ring-brand-500/40'
+                      : 'rounded-2xl border border-ink-200 bg-white px-3 py-2 text-sm font-semibold text-ink-700 hover:bg-ink-50'
+                  }
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] text-ink-500">
+              Tier lives on the card. Tiers can be changed later from the card detail page.
+            </p>
           </div>
 
           <div className="grid grid-cols-3 gap-2">

@@ -79,17 +79,19 @@ export interface MemberActivity {
 export interface Member {
   id: string
   businessId: string
+  slug?: string
   name: string
   email?: string
   phone?: string
   avatarColor?: string
-  tier: string
+  password?: string
   type: MemberType
   status: MemberStatus
   notes?: string
   address?: string
   joinedAt: string
   lastActiveAt?: string
+  lastLoginAt?: string
 }
 
 export interface MembershipCard {
@@ -100,6 +102,7 @@ export interface MembershipCard {
   nfcUid?: string
   type: MembershipCardType
   status: MembershipCardStatus
+  tier: string
   balance: number
   dailyLimit: number
   monthlyLimit: number

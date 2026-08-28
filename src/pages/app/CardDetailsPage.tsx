@@ -5,8 +5,11 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Ban,
+  Check,
   CheckCircle2,
+  Copy,
   CreditCard,
+  ExternalLink,
   Hash,
   KeyRound,
   Lock,
@@ -31,11 +34,14 @@ import {
   getCardDeposits,
   getCardTransactions,
   getMember,
+  getMemberBySlug,
   isCardUsable,
   maskCardNumber,
   replaceCard,
+  TIERS,
   topUpCard,
   unassignCard,
+  updateCard,
 } from '../../card-store'
 import { paymentMethodLabel } from '../../payment-store'
 import type {
@@ -318,6 +324,44 @@ export default function CardDetailsPage() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Portal link + tier */}
+          <div className="rounded-2xl border border-ink-100 bg-white p-5 shadow-soft">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-bold text-ink-900">Member portal</div>
+              <span className="rounded-pill border border-ink-200 bg-ink-50 px-2 py-0.5 text-[10px] font-semibold text-ink-600">
+                Customer view
+              </span>
+            </div>
+            <p className="mt-1 text-[11px] text-ink-500">
+              The cardholder's private dashboard. Share this link so they can check
+              their balance from any device.
+            </p>
+            {member ? (
+              <PortalLinkBlock memberSlug={member.slug ?? member.id} />
+            ) : (
+              <div className="mt-3 rounded-xl border border-dashed border-ink-200 bg-ink-50/40 p-3 text-[11px] text-ink-500">
+                Assign this card to a member to generate a portal link.
+              </div>
+            )}
+            <div className="mt-4 border-t border-ink-100 pt-4">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-sm font-bold text-ink-900">Tier</div>
+                <span className="text-[11px] text-ink-500">
+                  Tier is stored on the card.
+                </span>
+              </div>
+              <TierEditor
+                value={card.tier}
+                onChange={(t) => {
+                  updateCard(card.id, { tier: t })
+                  refresh()
+                  notify(`Card tier set to ${t}.`)
+                  playCue('info')
+                }}
+              />
             </div>
           </div>
 
@@ -937,5 +981,84 @@ function ConfirmDrawer({
         <div className="mt-3 text-sm text-ink-700">{description}</div>
       </div>
     </DrawerShell>
+  )
+}
+
+function PortalLinkBlock({ memberSlug }: { memberSlug: string }) {
+  const [copied, setCopied] = useState(false)
+  const member = getMemberBySlug(memberSlug)
+  const slug = member?.slug ?? memberSlug
+  const path = `/u/${slug}`
+  const url =
+    typeof window !== 'undefined' ? `${window.location.origin}${path}` : path
+
+  function copy() {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard
+        .writeText(url)
+        .then(() => {
+          setCopied(true)
+          playCue('success')
+          setTimeout(() => setCopied(false), 1800)
+        })
+        .catch(() => {
+          setCopied(false)
+        })
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex items-center gap-2 rounded-xl border border-ink-200 bg-ink-50/40 px-3 py-2">
+        <Hash className="h-3.5 w-3.5 shrink-0 text-ink-400" />
+        <code className="min-w-0 flex-1 truncate text-xs text-ink-700">{url}</code>
+        <button
+          type="button"
+          onClick={copy}
+          className={
+            copied
+              ? 'inline-flex h-7 items-center gap-1 rounded-pill bg-emerald-500 px-2.5 text-[10px] font-bold uppercase tracking-wider text-white'
+              : 'inline-flex h-7 items-center gap-1 rounded-pill bg-ink-900 px-2.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-ink-800'
+          }
+        >
+          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <Link
+          to={path}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-ink-700 hover:underline"
+        >
+          <ExternalLink className="h-3 w-3" /> Open as customer
+        </Link>
+        <span className="text-[11px] text-ink-500">
+          Default password: <span className="font-mono">{member?.password ?? '1234'}</span>
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function TierEditor({ value, onChange }: { value: string; onChange: (t: string) => void }) {
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {TIERS.map((t) => (
+        <button
+          key={t}
+          type="button"
+          onClick={() => onChange(t)}
+          className={
+            t === value
+              ? 'rounded-xl border border-brand-500 bg-brand-50 px-2 py-2 text-xs font-bold text-ink-900 ring-1 ring-brand-500/30'
+              : 'rounded-xl border border-ink-200 bg-white px-2 py-2 text-xs font-bold text-ink-700 hover:bg-ink-50'
+          }
+        >
+          {t}
+        </button>
+      ))}
+    </div>
   )
 }
