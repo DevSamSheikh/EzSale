@@ -33,6 +33,7 @@ import type {
   PaymentMethod,
   Transaction,
 } from '../../types'
+import { StatCard, type StatTone } from '../../components/Primitives'
 import { playCue } from '../../audio'
 
 function currency(n: number) {
@@ -822,27 +823,43 @@ function MembershipPanel({
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label="Card" value={lookup.card.cardNumber} mono />
-            <Stat label="Tier" value={lookup.card.tier} />
-            <Stat
+            <StatCard
+              variant="inline"
+              label="Card"
+              value={lookup.card.cardNumber}
+              className="[&_div:nth-child(2)]:font-mono [&_div:nth-child(2)]:tracking-wide"
+            />
+            <StatCard variant="inline" label="Tier" value={lookup.card.tier} />
+            <StatCard
+              variant="inline"
               label="Available balance"
               value={currency(lookup.card.balance)}
-              highlight
+              tone="brand"
             />
-            <Stat
+            <StatCard
+              variant="inline"
               label="Expires"
               value={new Date(lookup.card.expiresAt).toLocaleDateString()}
             />
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label="Daily limit" value={currency(lookup.card.dailyLimit)} />
-            <Stat label="Monthly limit" value={currency(lookup.card.monthlyLimit)} />
-            <Stat
+            <StatCard
+              variant="inline"
+              label="Daily limit"
+              value={currency(lookup.card.dailyLimit)}
+            />
+            <StatCard
+              variant="inline"
+              label="Monthly limit"
+              value={currency(lookup.card.monthlyLimit)}
+            />
+            <StatCard
+              variant="inline"
               label="Issued"
               value={new Date(lookup.card.issuedAt).toLocaleDateString()}
             />
-            <Stat label="Limits" value="Active" />
+            <StatCard variant="inline" label="Limits" value="Active" />
           </div>
 
           {!usable.ok && (
@@ -945,30 +962,5 @@ function StatusPill({ status }: { status: MembershipCard['status'] }) {
       <span className="h-1.5 w-1.5 rounded-full bg-current" />
       {m.label}
     </span>
-  )
-}
-
-function Stat({
-  label,
-  value,
-  mono,
-  highlight,
-}: {
-  label: string
-  value: string
-  mono?: boolean
-  highlight?: boolean
-}) {
-  return (
-    <div className="rounded-2xl border border-ink-100 bg-white p-3">
-      <div className="text-[11px] uppercase tracking-wide text-ink-500">{label}</div>
-      <div
-        className={`mt-0.5 text-sm font-bold ${
-          highlight ? 'text-brand-700' : 'text-ink-900'
-        } ${mono ? 'font-mono tracking-wide' : ''}`}
-      >
-        {value}
-      </div>
-    </div>
   )
 }

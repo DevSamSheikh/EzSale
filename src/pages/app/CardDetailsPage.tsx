@@ -15,6 +15,7 @@ import {
   Lock,
   Nfc,
   Pause,
+  Pencil,
   Play,
   RefreshCw,
   ShieldOff,
@@ -49,6 +50,7 @@ import type {
   CardDeposit,
   MembershipCard,
   MembershipCardStatus,
+  MembershipCardType,
   Transaction,
 } from '../../types'
 import { playCue } from '../../audio'
@@ -124,6 +126,7 @@ export default function CardDetailsPage() {
   const [replaceOpen, setReplaceOpen] = useState(false)
   const [blockOpen, setBlockOpen] = useState(false)
   const [unassignOpen, setUnassignOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
@@ -205,6 +208,14 @@ export default function CardDetailsPage() {
       notify(`Top-up of ${currency(amount)} added.`)
       playCue('success')
     }
+  }
+
+  function handleEditCard(patch: Partial<MembershipCard>) {
+    if (!card) return
+    updateCard(card.id, patch)
+    refresh()
+    notify(`Card information updated.`)
+    playCue('success')
   }
 
   if (!card) {
@@ -367,7 +378,17 @@ export default function CardDetailsPage() {
 
           {/* Quick details */}
           <div className="rounded-2xl border border-ink-100 bg-white p-5 shadow-soft">
-            <div className="text-sm font-bold text-ink-900">Card information</div>
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-bold text-ink-900">Card information</div>
+              <button
+                type="button"
+                onClick={() => setEditOpen(true)}
+                className="grid h-8 w-8 place-items-center rounded-full bg-ink-100 text-ink-700 transition hover:bg-ink-200"
+                aria-label="Edit card information"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            </div>
             <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
               <Row icon={Hash} label="Card ID" value={card.id} mono />
               <Row icon={CreditCard} label="Card number" value={card.cardNumber} mono />
@@ -471,6 +492,13 @@ export default function CardDetailsPage() {
             handleUnassign()
             setUnassignOpen(false)
           }}
+        />
+      )}
+      {editOpen && (
+        <EditCardDrawer
+          card={card}
+          onClose={() => setEditOpen(false)}
+          onSubmit={handleEditCard}
         />
       )}
 
@@ -974,11 +1002,11 @@ function ConfirmDrawer({
         </div>
       }
     >
-      <div className="grid place-items-center py-6">
+      <div className="grid place-items-center gap-3 py-8 text-center">
         <div className="grid h-14 w-14 place-items-center rounded-2xl bg-amber-50 text-amber-700">
           <Icon className="h-6 w-6" />
         </div>
-        <div className="mt-3 text-sm text-ink-700">{description}</div>
+        <p className="max-w-sm text-sm text-ink-700">{description}</p>
       </div>
     </DrawerShell>
   )
@@ -1060,5 +1088,154 @@ function TierEditor({ value, onChange }: { value: string; onChange: (t: string) 
         </button>
       ))}
     </div>
+  )
+}
+
+const CARD_TYPES: MembershipCardType[] = ['standard', 'nfc', 'virtual', 'corporate', 'gift']
+
+function EditCardDrawer({
+  card,
+  onClose,
+  onSubmit,
+}: {
+  card: MembershipCard
+  onClose: () => void
+  onSubmit: (patch: Partial<MembershipCard>) => void
+}) {
+  const [cardNumber, setCardNumber] = useState(card.cardNumber)
+  const [type, setType] = useState<MembershipCardType>(card.type)
+  const [nfcUid, setNfcUid] = useState(card.nfcUid ?? '')
+  const [dailyLimit, setDailyLimit] = useState(String(card.dailyLimit))
+  const [monthlyLimit, setMonthlyLimit] = useState(String(card.monthlyLimit))
+  const [expiresAt, setExpiresAt] = useState(card.expiresAt.slice(0, 10))
+  const [tier, setTier] = useState(card.tier)
+
+  function submit() {
+    const patch: Partial<MembershipCard> = {
+      cardNumber: cardNumber.trim(),
+      type,
+      nfcUid: nfcUid.trim() ? nfcUid.trim().toUpperCase() : undefined,
+      dailyLimit: Math.max(0, Number(dailyLimit) || 0),
+      monthlyLimit: Math.max(0, Number(monthlyLimit) || 0),
+      expiresAt: new Date(expiresAt).toISOString(),
+      tier,
+    }
+    onSubmit(patch)
+  }
+
+  return (
+    <DrawerShell
+      title="Edit card information"
+      description={`Update details for ${maskCardNumber(card.cardNumber)}.`}
+      onClose={onClose}
+      footer={
+        <div className="flex items-center gap-2">
+          <button onClick={onClose} className="btn-secondary flex-1">
+            Cancel
+          </button>
+          <button onClick={submit} className="btn-primary flex-1 py-3">
+            <Pencil className="h-4 w-4" /> Save changes
+          </button>
+        </div>
+      }
+    >
+      <div>
+        <label className="label">Card number</label>
+        <input
+          className="input font-mono tracking-widest"
+          value={cardNumber}
+          onChange={(e) => setCardNumber(e.target.value)}
+          placeholder="0000 0000 0000 0000"
+        />
+      </div>
+      <div>
+        <label className="label">Card type</label>
+        <div className="grid grid-cols-3 gap-2">
+          {CARD_TYPES.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setType(t)}
+              className={
+                t === type
+                  ? 'rounded-2xl border border-brand-500 bg-brand-50 px-3 py-2 text-sm font-semibold text-ink-900 ring-1 ring-brand-500/40'
+                  : 'rounded-2xl border border-ink-200 bg-white px-3 py-2 text-sm font-semibold text-ink-700 hover:bg-ink-50'
+              }
+            >
+              {cardTypeLabel(t)}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <label className="label">NFC UID (optional)</label>
+        <input
+          className="input font-mono"
+          value={nfcUid}
+          onChange={(e) => setNfcUid(e.target.value)}
+          placeholder="04:AB:CD:..."
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="label">Daily limit</label>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-500">
+              $
+            </span>
+            <input
+              type="number"
+              min={0}
+              className="input pl-6"
+              value={dailyLimit}
+              onChange={(e) => setDailyLimit(e.target.value)}
+            />
+          </div>
+        </div>
+        <div>
+          <label className="label">Monthly limit</label>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-500">
+              $
+            </span>
+            <input
+              type="number"
+              min={0}
+              className="input pl-6"
+              value={monthlyLimit}
+              onChange={(e) => setMonthlyLimit(e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
+      <div>
+        <label className="label">Expires on</label>
+        <input
+          type="date"
+          className="input"
+          value={expiresAt}
+          onChange={(e) => setExpiresAt(e.target.value)}
+        />
+      </div>
+      <div>
+        <label className="label">Tier</label>
+        <div className="grid grid-cols-4 gap-2">
+          {TIERS.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTier(t)}
+              className={
+                t === tier
+                  ? 'rounded-xl border border-brand-500 bg-brand-50 px-2 py-2 text-xs font-bold text-ink-900 ring-1 ring-brand-500/30'
+                  : 'rounded-xl border border-ink-200 bg-white px-2 py-2 text-xs font-bold text-ink-700 hover:bg-ink-50'
+              }
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+    </DrawerShell>
   )
 }

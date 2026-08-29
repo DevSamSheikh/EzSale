@@ -12,6 +12,7 @@ export const NAV_LINKS = [
   { to: '/app/users', label: 'Users', icon: 'Users' },
   { to: '/app/cards', label: 'Cards', icon: 'CreditCard' },
   { to: '/app/deposits', label: 'Deposits', icon: 'Wallet' },
+  { to: '/app/deposit-requests', label: 'Requests', icon: 'Inbox' },
   { to: '/app/transactions', label: 'Transactions', icon: 'ArrowLeftRight' },
   { to: '/app/reports', label: 'Reports', icon: 'FileText' },
   { to: '/app/analytics', label: 'Analytics', icon: 'TrendingUp' },

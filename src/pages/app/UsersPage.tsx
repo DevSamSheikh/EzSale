@@ -23,7 +23,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react'
-import { PageHeader } from '../../components/Primitives'
+import { PageHeader, StatCard } from '../../components/Primitives'
 import {
   createMember,
   getCards,
@@ -344,11 +344,26 @@ export default function UsersPage() {
         }
       />
 
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label={`Total ${termPlural.toLowerCase()}`} value={String(stats.total)} />
-        <Stat label="Active" value={String(stats.active)} tone="emerald" />
-        <Stat label="Suspended" value={String(stats.suspended)} tone="rose" />
-        <Stat
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard
+          variant="inline"
+          label={`Total ${termPlural.toLowerCase()}`}
+          value={String(stats.total)}
+        />
+        <StatCard
+          variant="inline"
+          label="Active"
+          value={String(stats.active)}
+          tone="emerald"
+        />
+        <StatCard
+          variant="inline"
+          label="Suspended"
+          value={String(stats.suspended)}
+          tone="rose"
+        />
+        <StatCard
+          variant="inline"
           label="Outstanding balance"
           value={`$${stats.totalBalance.toFixed(0)}`}
           tone="brand"
@@ -678,31 +693,6 @@ export default function UsersPage() {
           {toast}
         </div>
       )}
-    </div>
-  )
-}
-
-function Stat({
-  label,
-  value,
-  tone,
-}: {
-  label: string
-  value: string
-  tone?: 'emerald' | 'rose' | 'brand'
-}) {
-  const color =
-    tone === 'emerald'
-      ? 'text-emerald-700'
-      : tone === 'rose'
-      ? 'text-rose-700'
-      : tone === 'brand'
-      ? 'text-brand-700'
-      : 'text-ink-900'
-  return (
-    <div className="rounded-2xl border border-ink-100 bg-white p-3">
-      <div className="text-[11px] uppercase tracking-wide text-ink-500">{label}</div>
-      <div className={`mt-0.5 text-lg font-extrabold ${color}`}>{value}</div>
     </div>
   )
 }
@@ -1173,3 +1163,4 @@ function UserDrawer({
 }
 
 export { UserDrawer, Avatar as UserAvatar }
+

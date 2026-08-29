@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowDownToLine,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -13,10 +14,11 @@ import {
   Nfc,
   Plus,
   Search,
+  User as UserIcon,
   Wallet,
   X,
 } from 'lucide-react'
-import { PageHeader } from '../../components/Primitives'
+import { PageHeader, StatCard } from '../../components/Primitives'
 import {
   cardStatusLabel,
   cardTypeLabel,
@@ -209,22 +211,32 @@ export default function CardsPage() {
         title="NFC membership cards"
         subtitle="Issue, search, and manage member cards across your business."
         actions={
-          <>
-            <button onClick={openAdd} className="btn-secondary">
-              <Nfc className="h-4 w-4" /> Tap to enroll
-            </button>
-            <button onClick={openAdd} className="btn-primary">
-              <Plus className="h-4 w-4" /> New card
-            </button>
-          </>
+          <button onClick={openAdd} className="btn-primary">
+            <Plus className="h-4 w-4" /> New card
+          </button>
         }
       />
 
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Total cards" value={String(stats.total)} />
-        <Stat label="Active" value={String(stats.active)} tone="emerald" />
-        <Stat label="Blocked" value={String(stats.blocked)} tone="rose" />
-        <Stat
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard
+          variant="inline"
+          label="Total cards"
+          value={String(stats.total)}
+        />
+        <StatCard
+          variant="inline"
+          label="Active"
+          value={String(stats.active)}
+          tone="emerald"
+        />
+        <StatCard
+          variant="inline"
+          label="Blocked"
+          value={String(stats.blocked)}
+          tone="rose"
+        />
+        <StatCard
+          variant="inline"
           label="Outstanding balance"
           value={`$${stats.balance.toFixed(0)}`}
           tone="brand"
@@ -507,31 +519,6 @@ export default function CardsPage() {
   )
 }
 
-function Stat({
-  label,
-  value,
-  tone,
-}: {
-  label: string
-  value: string
-  tone?: 'emerald' | 'rose' | 'brand'
-}) {
-  const color =
-    tone === 'emerald'
-      ? 'text-emerald-700'
-      : tone === 'rose'
-      ? 'text-rose-700'
-      : tone === 'brand'
-      ? 'text-brand-700'
-      : 'text-ink-900'
-  return (
-    <div className="rounded-2xl border border-ink-100 bg-white p-3">
-      <div className="text-[11px] uppercase tracking-wide text-ink-500">{label}</div>
-      <div className={`mt-0.5 text-lg font-extrabold ${color}`}>{value}</div>
-    </div>
-  )
-}
-
 function CardTile({ card, onOpen }: { card: MembershipCard; onOpen: () => void }) {
   const member = getMember(card.memberId)
   const Icon = typeIcon(card.type)
@@ -728,6 +715,8 @@ function AddCardDrawer({
   const [nfcUid, setNfcUid] = useState('')
   const [type, setType] = useState<MembershipCardType>('nfc')
   const [memberId, setMemberId] = useState<string>('')
+  const [memberSearch, setMemberSearch] = useState('')
+  const [memberPickerOpen, setMemberPickerOpen] = useState(false)
   const [tier, setTier] = useState<string>('Bronze')
   const [balance, setBalance] = useState<string>('0')
   const [dailyLimit, setDailyLimit] = useState<string>('500')
@@ -897,21 +886,18 @@ function AddCardDrawer({
 
           <div>
             <label className="label">Assign to member</label>
-            <select
+            <MemberPicker
               value={memberId}
-              onChange={(e) => {
-                setMemberId(e.target.value)
-                pickTierForMember(e.target.value)
+              onChange={(id) => {
+                setMemberId(id)
+                pickTierForMember(id)
               }}
-              className="input"
-            >
-              <option value="">Select a member…</option>
-              {members.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
+              members={members}
+              search={memberSearch}
+              onSearchChange={setMemberSearch}
+              open={memberPickerOpen}
+              onOpenChange={setMemberPickerOpen}
+            />
             <p className="mt-1 text-[11px] text-ink-500">
               Use a new member record if this card is for someone not yet in the system.
             </p>
@@ -1033,3 +1019,192 @@ function AddCardDrawer({
     </div>
   )
 }
+
+function MemberPicker({
+  value,
+  onChange,
+  members,
+  search,
+  onSearchChange,
+  open,
+  onOpenChange,
+}: {
+  value: string
+  onChange: (id: string) => void
+  members: ReturnType<typeof getMembers>
+  search: string
+  onSearchChange: (q: string) => void
+  open: boolean
+  onOpenChange: (o: boolean) => void
+}) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const selected = members.find((m) => m.id === value) ?? null
+
+  useEffect(() => {
+    if (!open) return
+    function onDocClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        onOpenChange(false)
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onOpenChange(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDocClick)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open, onOpenChange])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    const list = !q
+      ? members
+      : members.filter((m) => {
+          const hay = [m.name, m.email, m.phone, m.id].filter(Boolean).join(' ').toLowerCase()
+          return hay.includes(q)
+        })
+    return list
+      .map((m) => ({ m, count: getCardsByMember(m.id).length }))
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count
+        return a.m.name.localeCompare(b.m.name)
+      })
+  }, [members, search])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        className={
+          selected
+            ? 'input flex items-center justify-between gap-2 text-left'
+            : 'input flex items-center justify-between gap-2 text-left text-ink-500'
+        }
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        {selected ? (
+          <span className="flex min-w-0 items-center gap-2">
+            <span
+              className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white"
+              style={{ backgroundColor: selected.avatarColor ?? '#3a414d' }}
+            >
+              {selected.name
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((p) => p[0]?.toUpperCase() ?? '')
+                .join('') || '?'}
+            </span>
+            <span className="truncate text-sm font-semibold text-ink-900">
+              {selected.name}
+            </span>
+            <span className="shrink-0 rounded-pill border border-ink-200 bg-ink-50 px-1.5 py-0.5 text-[10px] font-semibold text-ink-700">
+              {getCardsByMember(selected.id).length} card
+              {getCardsByMember(selected.id).length === 1 ? '' : 's'} linked
+            </span>
+          </span>
+        ) : (
+          <span className="text-sm">Select a member…</span>
+        )}
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-ink-500 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 z-30 mt-1.5 overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-pop">
+          <div className="border-b border-ink-100 p-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+              <input
+                autoFocus
+                value={search}
+                onChange={(e) => onSearchChange(e.target.value)}
+                placeholder="Search by name, email, phone…"
+                className="input pl-9"
+              />
+            </div>
+          </div>
+          <ul role="listbox" className="max-h-64 overflow-y-auto py-1">
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange('')
+                  onOpenChange(false)
+                  onSearchChange('')
+                }}
+                className={
+                  !value
+                    ? 'flex w-full items-center gap-2 bg-ink-50 px-3 py-2 text-left text-sm font-semibold text-ink-900'
+                    : 'flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-700 hover:bg-ink-50'
+                }
+              >
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-dashed border-ink-300 text-ink-400">
+                  ?
+                </span>
+                <span>Select a member…</span>
+              </button>
+            </li>
+            {filtered.length === 0 ? (
+              <li className="px-3 py-6 text-center text-xs text-ink-500">
+                No members match “{search}”.
+              </li>
+            ) : (
+              filtered.map(({ m, count }) => {
+                const active = m.id === value
+                return (
+                  <li key={m.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onChange(m.id)
+                        onOpenChange(false)
+                        onSearchChange('')
+                      }}
+                      className={
+                        active
+                          ? 'flex w-full items-center gap-2 bg-brand-50 px-3 py-2 text-left text-sm'
+                          : 'flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-ink-50'
+                      }
+                    >
+                      <span
+                        className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white"
+                        style={{ backgroundColor: m.avatarColor ?? '#3a414d' }}
+                      >
+                        {m.name
+                          .split(/\s+/)
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .map((p) => p[0]?.toUpperCase() ?? '')
+                          .join('') || '?'}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">
+                        <span className="block truncate font-semibold text-ink-900">
+                          {m.name}
+                        </span>
+                        {(m.email || m.phone) && (
+                          <span className="block truncate text-[11px] text-ink-500">
+                            {m.email ?? m.phone}
+                          </span>
+                        )}
+                      </span>
+                      <span className="shrink-0 rounded-pill border border-ink-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-ink-700">
+                        {count} card{count === 1 ? '' : 's'} linked
+                      </span>
+                    </button>
+                  </li>
+                )
+              })
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+

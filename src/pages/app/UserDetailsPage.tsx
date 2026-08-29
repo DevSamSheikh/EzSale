@@ -24,7 +24,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react'
-import { PageHeader } from '../../components/Primitives'
+import { PageHeader, StatCard } from '../../components/Primitives'
 import {
   assignCardToMember,
   cardStatusLabel,
@@ -482,10 +482,10 @@ function ProfileSidebar({
 
       <div className="rounded-2xl border border-ink-100 bg-white p-4 shadow-soft">
         <div className="grid grid-cols-2 gap-3">
-          <Stat label="Spent" value={currency(stats.totalSpent)} />
-          <Stat label="Orders" value={String(stats.orderCount)} />
-          <Stat label="Top-ups" value={currency(stats.totalDeposits)} />
-          <Stat label="Cards" value={String(cardCount)} />
+          <StatCard variant="inline" label="Spent" value={currency(stats.totalSpent)} />
+          <StatCard variant="inline" label="Orders" value={String(stats.orderCount)} />
+          <StatCard variant="inline" label="Top-ups" value={currency(stats.totalDeposits)} />
+          <StatCard variant="inline" label="Cards" value={String(cardCount)} />
         </div>
       </div>
     </div>
@@ -512,15 +512,6 @@ function Row({
           {value}
         </div>
       </div>
-    </div>
-  )
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-wide text-ink-500">{label}</div>
-      <div className="text-base font-bold text-ink-900">{value}</div>
     </div>
   )
 }

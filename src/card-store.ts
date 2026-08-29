@@ -1,6 +1,8 @@
 import type {
   CardActivity,
   CardDeposit,
+  DepositRequest,
+  DepositRequestStatus,
   Member,
   MemberActivity,
   MembershipCard,
@@ -14,6 +16,7 @@ const KEY_MEMBERS = 'ezsale:members'
 const KEY_CARDS = 'ezsale:cards'
 const KEY_ACTIVITY = 'ezsale:card-activity'
 const KEY_DEPOSITS = 'ezsale:card-deposits'
+const KEY_DEPOSIT_REQUESTS = 'ezsale:deposit-requests'
 const KEY_MEMBER_ACTIVITY = 'ezsale:member-activity'
 
 function safeParse<T>(raw: string | null, fallback: T): T {
@@ -1136,4 +1139,194 @@ export function chargeCard(cardId: string, amount: number): MembershipCard | nul
   const card = getCard(cardId)
   if (!card) return null
   return updateCard(cardId, { balance: Math.max(0, card.balance - amount) })
+}
+
+// ---- Deposit Requests ----------------------------------------------------
+
+export interface NewDepositRequestInput {
+  cardId: string
+  amount: number
+  method: CardDeposit['method']
+  reference?: string
+  note?: string
+  attachmentName?: string
+  requestedBy?: string
+}
+
+function loadDepositRequests(): DepositRequest[] {
+  if (typeof window === 'undefined') return []
+  return safeParse<DepositRequest[]>(localStorage.getItem(KEY_DEPOSIT_REQUESTS), [])
+}
+
+function saveDepositRequests(requests: DepositRequest[]) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(KEY_DEPOSIT_REQUESTS, JSON.stringify(requests))
+}
+
+function persistDepositRequest(req: DepositRequest) {
+  const all = loadDepositRequests()
+  all.unshift(req)
+  saveDepositRequests(all)
+}
+
+export function getDepositRequests(): DepositRequest[] {
+  return loadDepositRequests().sort((a, b) => (a.requestedAt < b.requestedAt ? 1 : -1))
+}
+
+export function getDepositRequestsByMember(memberId: string): DepositRequest[] {
+  return getDepositRequests().filter((r) => r.memberId === memberId)
+}
+
+export function getDepositRequestsByCard(cardId: string): DepositRequest[] {
+  return getDepositRequests().filter((r) => r.cardId === cardId)
+}
+
+export function getDepositRequest(id: string): DepositRequest | null {
+  return loadDepositRequests().find((r) => r.id === id) ?? null
+}
+
+export function getPendingDepositRequestForMember(memberId: string): DepositRequest | null {
+  return loadDepositRequests().find(
+    (r) => r.memberId === memberId && r.status === 'pending',
+  ) ?? null
+}
+
+export interface CreateDepositRequestResult {
+  request: DepositRequest
+  error?: string
+}
+
+export function createDepositRequest(
+  input: NewDepositRequestInput,
+): CreateDepositRequestResult {
+  if (!(input.amount > 0)) {
+    return { request: null as unknown as DepositRequest, error: 'Amount must be greater than zero.' }
+  }
+  const card = getCard(input.cardId)
+  if (!card) {
+    return { request: null as unknown as DepositRequest, error: 'Card not found.' }
+  }
+  if (!card.memberId) {
+    return { request: null as unknown as DepositRequest, error: 'Card is not assigned to a member.' }
+  }
+  const existing = loadDepositRequests().find(
+    (r) => r.cardId === input.cardId && r.status === 'pending',
+  )
+  if (existing) {
+    return {
+      request: existing,
+      error: 'You already have a pending request for this card.',
+    }
+  }
+  const request: DepositRequest = {
+    id: uid('req'),
+    businessId: card.businessId,
+    cardId: card.id,
+    memberId: card.memberId,
+    amount: input.amount,
+    method: input.method,
+    reference: input.reference?.trim() || undefined,
+    note: input.note?.trim() || undefined,
+    attachmentName: input.attachmentName?.trim() || undefined,
+    status: 'pending',
+    requestedAt: new Date().toISOString(),
+    requestedBy: input.requestedBy ?? 'self',
+  }
+  persistDepositRequest(request)
+  return { request }
+}
+
+function patchDepositRequest(id: string, patch: Partial<DepositRequest>): DepositRequest | null {
+  const all = loadDepositRequests()
+  const idx = all.findIndex((r) => r.id === id)
+  if (idx < 0) return null
+  const next = { ...all[idx], ...patch }
+  all[idx] = next
+  saveDepositRequests(all)
+  return next
+}
+
+export interface ApproveDepositRequestResult {
+  request: DepositRequest
+  deposit: CardDeposit
+  transaction: Transaction
+}
+
+export function approveDepositRequest(
+  id: string,
+  by: string = 'admin@ezsale.app',
+): ApproveDepositRequestResult | null {
+  const req = getDepositRequest(id)
+  if (!req || req.status !== 'pending') return null
+  const result = topUpCard(req.cardId, req.amount, req.method, req.reference, req.note, by)
+  if (!result) return null
+  const txn = getTransactions().find((t) => t.cardId === req.cardId) ?? null
+  const updated = patchDepositRequest(id, {
+    status: 'completed',
+    reviewedAt: new Date().toISOString(),
+    reviewedBy: by,
+    resultingDepositId: result.deposit.id,
+    resultingTransactionId: txn?.id,
+  })
+  if (!updated) return null
+  return { request: updated, deposit: result.deposit, transaction: txn as Transaction }
+}
+
+export function rejectDepositRequest(
+  id: string,
+  reason: string,
+  by: string = 'admin@ezsale.app',
+): DepositRequest | null {
+  const req = getDepositRequest(id)
+  if (!req || req.status !== 'pending') return null
+  return patchDepositRequest(id, {
+    status: 'rejected',
+    reviewedAt: new Date().toISOString(),
+    reviewedBy: by,
+    rejectionReason: reason.trim() || 'No reason provided',
+  })
+}
+
+export function cancelDepositRequest(
+  id: string,
+  by: string = 'self',
+): DepositRequest | null {
+  const req = getDepositRequest(id)
+  if (!req || req.status !== 'pending') return null
+  return patchDepositRequest(id, {
+    status: 'cancelled',
+    reviewedAt: new Date().toISOString(),
+    reviewedBy: by,
+  })
+}
+
+export function depositRequestStatusLabel(s: DepositRequestStatus): string {
+  switch (s) {
+    case 'pending':
+      return 'Pending'
+    case 'approved':
+      return 'Approved'
+    case 'rejected':
+      return 'Rejected'
+    case 'cancelled':
+      return 'Cancelled'
+    case 'completed':
+      return 'Completed'
+  }
+}
+
+export function depositRequestStatusTone(
+  s: DepositRequestStatus,
+): { bg: string; text: string; border: string } {
+  switch (s) {
+    case 'pending':
+      return { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' }
+    case 'approved':
+    case 'completed':
+      return { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' }
+    case 'rejected':
+      return { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' }
+    case 'cancelled':
+      return { bg: 'bg-ink-100', text: 'text-ink-700', border: 'border-ink-200' }
+  }
 }

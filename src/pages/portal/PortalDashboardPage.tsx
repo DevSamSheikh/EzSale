@@ -8,14 +8,21 @@ import {
   Calendar,
   CheckCircle2,
   ChevronRight,
+  Clock,
   CreditCard,
+  FileText,
   Hash,
   KeyRound,
+  Loader2,
   Lock,
   Mail,
   Nfc,
+  Paperclip,
   Phone,
   Receipt,
+  RotateCcw,
+  ShoppingBag,
+  SlidersHorizontal,
   Sparkles,
   User as UserIcon,
   Wallet,
@@ -23,12 +30,18 @@ import {
 } from 'lucide-react'
 import { PortalShell } from './PortalShell'
 import {
+  cancelDepositRequest,
   cardStatusLabel,
   cardTypeLabel,
+  createDepositRequest,
+  depositRequestStatusLabel,
+  depositRequestStatusTone,
   getCardActivity,
   getCardDeposits,
   getCardTransactions,
   getCardsByMember,
+  getDepositRequest,
+  getDepositRequestsByMember,
   getMember,
   getMemberBySlug,
   getMemberTier,
@@ -39,9 +52,25 @@ import {
 } from '../../card-store'
 import { getTransactions, paymentMethodLabel } from '../../payment-store'
 import { getBusiness } from '../../store'
+import { StatCard, type StatTone } from '../../components/Primitives'
+import {
+  billingCategoryLabel,
+  billingCategoryTone,
+  billingFilterCount,
+  billingPeriodLabel,
+  buildBillingHistory,
+  DEFAULT_BILLING_FILTERS,
+  filterBillingEntries,
+  type BillingCategory,
+  type BillingEntry,
+  type BillingFilters,
+  type BillingPeriod,
+} from '../../lib/billing-history'
 import type {
   CardActivity,
   CardDeposit,
+  DepositRequest,
+  DepositRequestStatus,
   MembershipCard,
   Transaction,
 } from '../../types'
@@ -130,6 +159,21 @@ export default function PortalDashboardPage() {
     return all.sort((a, b) => (a.at < b.at ? 1 : -1))
   }, [member, cards])
 
+  const billingEntries = useMemo(() => {
+    if (!member) return [] as BillingEntry[]
+    return buildBillingHistory(cards, business)
+  }, [member, cards])
+
+  const myRequests = useMemo(() => {
+    if (!member) return [] as DepositRequest[]
+    return getDepositRequestsByMember(member.id)
+  }, [member, deposits, topupOpen])
+
+  const pendingRequest = useMemo(
+    () => myRequests.find((r) => r.status === 'pending') ?? null,
+    [myRequests],
+  )
+
   const stats = useMemo(() => {
     const totalSpent = transactions
       .filter((t) => t.status === 'completed')
@@ -186,9 +230,9 @@ export default function PortalDashboardPage() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
-    { id: 'transactions', label: 'Charges' },
+    { id: 'transactions', label: 'Billing' },
     { id: 'deposits', label: 'Top-ups' },
-    { id: 'billing', label: 'Billing' },
+    { id: 'billing', label: 'Insights' },
     { id: 'account', label: 'Account' },
   ]
 
@@ -224,7 +268,7 @@ export default function PortalDashboardPage() {
         <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
           <ActionTile
             Icon={Sparkles}
-            label="Request top-up"
+            label={pendingRequest ? `Pending · ${currency(pendingRequest.amount)}` : 'Request top-up'}
             onClick={() => {
               setTopupOpen(true)
               playCue('tap')
@@ -237,6 +281,21 @@ export default function PortalDashboardPage() {
             onClick={() => setTab('billing')}
           />
         </div>
+        {pendingRequest && (
+          <div className="mt-3 flex items-start gap-2 rounded-2xl bg-white/10 p-3 text-[11px] text-white backdrop-blur">
+            <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-200" />
+            <div>
+              <div className="font-bold text-white">
+                Pending top-up request · {currency(pendingRequest.amount)}
+              </div>
+              <div className="text-white/70">
+                Via {paymentMethodLabel(pendingRequest.method)} · submitted{' '}
+                {formatRelative(pendingRequest.requestedAt)}. Balance will update once staff
+                approve.
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       <nav
@@ -273,9 +332,19 @@ export default function PortalDashboardPage() {
             memberTier={memberTier}
           />
         )}
-        {tab === 'transactions' && <TransactionsTab transactions={transactions} />}
+        {tab === 'transactions' && <BillingHistoryTab entries={billingEntries} />}
         {tab === 'deposits' && (
-          <DepositsTab deposits={deposits} cards={cards} onRequest={() => setTopupOpen(true)} />
+          <DepositsTab
+            deposits={deposits}
+            requests={myRequests}
+            cards={cards}
+            onRequest={() => setTopupOpen(true)}
+            onCancelRequest={(id) => {
+              cancelDepositRequest(id)
+              notify('Request cancelled.')
+              playCue('info')
+            }}
+          />
         )}
         {tab === 'billing' && <BillingTab transactions={transactions} stats={stats} />}
         {tab === 'account' && (
@@ -287,11 +356,21 @@ export default function PortalDashboardPage() {
         <TopupRequestDrawer
           member={member}
           cards={cards}
+          existingPending={pendingRequest}
           onClose={() => setTopupOpen(false)}
-          onSubmit={(amount, method) => {
+          onSubmit={(input) => {
+            const result = createDepositRequest({
+              ...input,
+              requestedBy: 'self',
+            })
+            if (result.error) {
+              notify(result.error)
+              playCue('warning')
+              return
+            }
             setTopupOpen(false)
             notify(
-              `Top-up request for ${currency(amount)} (${paymentMethodLabel(method)}) sent. Staff will be notified.`,
+              `Top-up request for ${currency(input.amount)} (${paymentMethodLabel(input.method)}) sent. Status: pending.`,
             )
             playCue('success')
           }}
@@ -407,9 +486,9 @@ function OverviewTab({
         )}
         {primary && (
           <div className="mt-2 grid grid-cols-3 gap-2">
-            <MiniStat label="Status" value={cardStatusLabel(primary.status)} />
-            <MiniStat label="Daily" value={currency(primary.dailyLimit)} />
-            <MiniStat label="Monthly" value={currency(primary.monthlyLimit)} />
+            <StatCard variant="inline" label="Status" value={cardStatusLabel(primary.status)} />
+            <StatCard variant="inline" label="Daily" value={currency(primary.dailyLimit)} />
+            <StatCard variant="inline" label="Monthly" value={currency(primary.monthlyLimit)} />
           </div>
         )}
         <div className="mt-2 flex items-center gap-2 rounded-2xl border border-ink-100 bg-white p-3 text-[11px] text-ink-600 shadow-soft">
@@ -425,27 +504,31 @@ function OverviewTab({
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <SummaryTile
-          Icon={ArrowUpRight}
-          tone="bg-rose-50 text-rose-700 border-rose-200"
+        <StatCard
+          icon={ArrowUpRight}
+          tone="rose"
+          variant="top"
           label="Spent this month"
           value={currency(stats.thisMonthSpent)}
         />
-        <SummaryTile
-          Icon={Sparkles}
-          tone="bg-emerald-50 text-emerald-700 border-emerald-200"
+        <StatCard
+          icon={Sparkles}
+          tone="emerald"
+          variant="top"
           label="Top-ups"
           value={currency(stats.totalTopUps)}
         />
-        <SummaryTile
-          Icon={ArrowUpRight}
-          tone="bg-indigo-50 text-indigo-700 border-indigo-200"
+        <StatCard
+          icon={ArrowUpRight}
+          tone="indigo"
+          variant="top"
           label="All-time spent"
           value={currency(stats.totalSpent)}
         />
-        <SummaryTile
-          Icon={Receipt}
-          tone="bg-ink-100 text-ink-700 border-ink-200"
+        <StatCard
+          icon={Receipt}
+          tone="neutral"
+          variant="top"
           label="Charges"
           value={String(stats.txnCount)}
         />
@@ -502,131 +585,731 @@ function OverviewTab({
   )
 }
 
-function TransactionsTab({ transactions }: { transactions: Transaction[] }) {
-  if (transactions.length === 0) {
+const BILLING_CATEGORY_CHIPS: { id: BillingCategory | 'all'; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'purchase', label: 'Purchases' },
+  { id: 'deposit', label: 'Deposits' },
+  { id: 'refund', label: 'Refunds' },
+  { id: 'adjustment', label: 'Adjustments' },
+  { id: 'withdrawal', label: 'Withdrawals' },
+]
+
+const BILLING_PERIOD_CHIPS: { id: BillingPeriod; label: string }[] = [
+  { id: 'all', label: 'All time' },
+  { id: 'today', label: 'Today' },
+  { id: '7d', label: '7 days' },
+  { id: '30d', label: '30 days' },
+  { id: '90d', label: '90 days' },
+  { id: 'custom', label: 'Custom' },
+]
+
+function categoryIcon(c: BillingCategory) {
+  switch (c) {
+    case 'purchase':
+      return ShoppingBag
+    case 'deposit':
+      return ArrowDownToLine
+    case 'refund':
+      return RotateCcw
+    case 'adjustment':
+      return SlidersHorizontal
+    case 'withdrawal':
+      return ArrowUpRight
+  }
+}
+
+function BillingHistoryTab({ entries }: { entries: BillingEntry[] }) {
+  const [filters, setFilters] = useState<BillingFilters>(DEFAULT_BILLING_FILTERS)
+  const [selected, setSelected] = useState<BillingEntry | null>(null)
+
+  const filtered = useMemo(() => filterBillingEntries(entries, filters), [entries, filters])
+  const summary = useMemo(() => {
+    let moneyIn = 0
+    let moneyOut = 0
+    filtered.forEach((e) => {
+      if (e.amount >= 0) moneyIn += e.amount
+      else moneyOut += Math.abs(e.amount)
+    })
+    return { moneyIn, moneyOut }
+  }, [filtered])
+
+  const activeFilterCount = billingFilterCount(filters)
+  const hasAnyFilter = activeFilterCount > 0
+
+  function setFilter(patch: Partial<BillingFilters>) {
+    setFilters((f) => ({ ...f, ...patch }))
+  }
+
+  if (entries.length === 0) {
     return (
       <EmptyState
-        title="No charges yet"
-        description="Purchases made with your membership card will appear here."
-        Icon={ArrowUpRight}
+        title="No billing history yet"
+        description="Purchases, top-ups and refunds on your membership cards will appear here."
+        Icon={Receipt}
       />
     )
   }
+
   return (
-    <ul className="space-y-2">
-      {transactions.map((t) => {
-        const first = t.items[0]?.name
-        const more = t.items.length > 1 ? ` · +${t.items.length - 1} more` : ''
-        return (
-          <li
-            key={t.id}
-            className="rounded-2xl border border-ink-100 bg-white p-3 shadow-soft"
+    <div className="space-y-3">
+      {/* Summary strip */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-2.5 text-center">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+            Money in
+          </div>
+          <div className="text-sm font-extrabold text-emerald-800">
+            +{currency(summary.moneyIn)}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-2.5 text-center">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-rose-700">
+            Money out
+          </div>
+          <div className="text-sm font-bold text-rose-700">
+            −{currency(summary.moneyOut)}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-ink-100 bg-white p-2.5 text-center">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-ink-500">
+            Records
+          </div>
+          <div className="text-sm font-bold text-ink-900">{filtered.length}</div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="rounded-2xl border border-ink-100 bg-white p-3 shadow-soft">
+        <div className="flex items-center justify-between gap-2">
+          <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-ink-500">
+            <SlidersHorizontal className="h-3.5 w-3.5" /> Filters
+            {activeFilterCount > 0 && (
+              <span className="rounded-pill bg-ink-900 px-1.5 text-[10px] font-bold text-white">
+                {activeFilterCount}
+              </span>
+            )}
+          </div>
+          {hasAnyFilter && (
+            <button
+              onClick={() => setFilters(DEFAULT_BILLING_FILTERS)}
+              className="text-[11px] font-semibold text-rose-600 hover:underline"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+
+        <nav className="mt-2 -mx-1 flex items-stretch gap-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {BILLING_PERIOD_CHIPS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => setFilter({ period: p.id })}
+              className={
+                filters.period === p.id
+                  ? 'inline-flex shrink-0 items-center rounded-pill bg-ink-900 px-3 py-1.5 text-[11px] font-bold text-white'
+                  : 'inline-flex shrink-0 items-center rounded-pill border border-ink-200 bg-white px-3 py-1.5 text-[11px] font-bold text-ink-700 hover:bg-ink-50'
+              }
+            >
+              {p.label}
+            </button>
+          ))}
+        </nav>
+
+        {filters.period === 'custom' && (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-ink-500">
+                From
+              </label>
+              <input
+                type="date"
+                className="input py-1.5 text-xs"
+                value={filters.from}
+                onChange={(e) => setFilter({ from: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-ink-500">
+                To
+              </label>
+              <input
+                type="date"
+                className="input py-1.5 text-xs"
+                value={filters.to}
+                onChange={(e) => setFilter({ to: e.target.value })}
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="mt-2 -mx-1 flex items-stretch gap-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {BILLING_CATEGORY_CHIPS.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setFilter({ category: c.id })}
+              className={
+                filters.category === c.id
+                  ? 'inline-flex shrink-0 items-center rounded-pill bg-ink-900 px-3 py-1.5 text-[11px] font-bold text-white'
+                  : 'inline-flex shrink-0 items-center rounded-pill border border-ink-200 bg-white px-3 py-1.5 text-[11px] font-bold text-ink-700 hover:bg-ink-50'
+              }
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-2 flex items-center gap-2">
+          <div className="relative flex-1">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-ink-400">
+              Min $
+            </span>
+            <input
+              type="number"
+              inputMode="decimal"
+              min={0}
+              className="input py-1.5 pl-11 text-xs"
+              value={filters.min ?? ''}
+              onChange={(e) =>
+                setFilter({ min: e.target.value === '' ? undefined : Number(e.target.value) })
+              }
+              placeholder="0"
+              aria-label="Minimum amount"
+            />
+          </div>
+          <span className="text-xs text-ink-400">–</span>
+          <div className="relative flex-1">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-ink-400">
+              Max $
+            </span>
+            <input
+              type="number"
+              inputMode="decimal"
+              className="input py-1.5 pl-11 text-xs"
+              value={filters.max ?? ''}
+              onChange={(e) =>
+                setFilter({ max: e.target.value === '' ? undefined : Number(e.target.value) })
+              }
+              placeholder="Any"
+              aria-label="Maximum amount"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* List */}
+      {filtered.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-ink-200 bg-ink-50/40 p-8 text-center">
+          <div className="mx-auto inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-ink-500 shadow-soft">
+            <Receipt className="h-4 w-4" />
+          </div>
+          <div className="mt-3 text-sm font-bold text-ink-900">No matching records</div>
+          <div className="mt-1 text-xs text-ink-500">
+            Try a different period, type or amount range.
+          </div>
+          <button
+            onClick={() => setFilters(DEFAULT_BILLING_FILTERS)}
+            className="btn-secondary mx-auto mt-4"
           >
-            <div className="flex items-start gap-3">
-              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-rose-50 text-rose-700">
-                <ArrowUpRight className="h-4 w-4" />
+            <X className="h-4 w-4" /> Clear filters
+          </button>
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {filtered.map((e) => {
+            const Icon = categoryIcon(e.category)
+            const tone = billingCategoryTone(e.category)
+            const credit = e.amount >= 0
+            return (
+              <li key={`${e.kind}-${e.id}`}>
+                <button
+                  onClick={() => setSelected(e)}
+                  className="w-full rounded-2xl border border-ink-100 bg-white p-3 text-left shadow-soft transition-colors hover:bg-ink-50/60"
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${tone.bg} ${tone.text}`}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="truncate text-sm font-semibold text-ink-900">
+                          {e.title}
+                        </div>
+                        <div
+                          className={`shrink-0 text-sm font-bold ${
+                            credit ? 'text-emerald-700' : 'text-rose-700'
+                          }`}
+                        >
+                          {credit ? '+' : '−'}
+                          {currency(Math.abs(e.amount))}
+                        </div>
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-ink-500">
+                        <span>{formatDateTime(e.date)}</span>
+                        <span>·</span>
+                        <span>{paymentMethodLabel(e.method)}</span>
+                        <span>·</span>
+                        <span className="font-mono">{e.number}</span>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-pill border px-2 py-0.5 text-[10px] font-bold ${tone.bg} ${tone.text} ${tone.border}`}
+                        >
+                          {billingCategoryLabel(e.category)}
+                        </span>
+                        {e.status === 'refunded' && (
+                          <span className="inline-flex items-center rounded-pill border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">
+                            Refunded
+                          </span>
+                        )}
+                        <span className="inline-flex items-center gap-1 rounded-pill border border-ink-200 bg-ink-50 px-2 py-0.5 text-[10px] font-semibold text-ink-600">
+                          Balance {currency(e.resultingBalance)}
+                        </span>
+                      </div>
+                    </div>
+                    <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-ink-300" />
+                  </div>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      {selected && (
+        <BillingDetailDrawer entry={selected} onClose={() => setSelected(null)} />
+      )}
+    </div>
+  )
+}
+
+function BillingDetailDrawer({ entry, onClose }: { entry: BillingEntry; onClose: () => void }) {
+  const business = getBusiness()
+  const t = entry.transaction
+  const d = entry.deposit
+  const tone = billingCategoryTone(entry.category)
+
+  return (
+    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-ink-900/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-x-0 bottom-0 flex max-h-[92vh] flex-col overflow-hidden rounded-t-3xl bg-white shadow-pop animate-[slideUp_0.25s_ease-out]">
+        <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-1 text-[10px] font-bold ${tone.bg} ${tone.text} ${tone.border}`}
+            >
+              {billingCategoryLabel(entry.category)}
+            </span>
+            <span
+              className={`rounded-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                entry.status === 'refunded'
+                  ? 'bg-sky-50 text-sky-700'
+                  : 'bg-emerald-50 text-emerald-700'
+              }`}
+            >
+              {entry.status === 'refunded' ? 'Refunded' : 'Completed'}
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="grid h-8 w-8 place-items-center rounded-full bg-ink-100 text-ink-700"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          {/* Receipt */}
+          <div className="mx-auto w-full max-w-[360px] rounded-2xl border border-ink-100 bg-white p-4 shadow-soft">
+            <div className="text-center">
+              <div className="text-base font-extrabold uppercase tracking-wide text-ink-900">
+                {business?.name ?? 'EzSale'}
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="truncate text-sm font-semibold text-ink-900">
-                    {first ? `${first}${more}` : `Order ${t.id}`}
-                  </div>
-                  <div className="shrink-0 text-sm font-bold text-rose-700">
-                    −{currency(t.total)}
-                  </div>
+              <div className="mt-0.5 text-[11px] text-ink-500">{entry.location}</div>
+              {(business?.contactEmail || business?.contactPhone) && (
+                <div className="text-[11px] text-ink-500">
+                  {[business?.contactEmail, business?.contactPhone].filter(Boolean).join(' · ')}
                 </div>
-                <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-ink-500">
-                  <span>{formatDateTime(t.createdAt)}</span>
-                  <span>·</span>
-                  <span>{paymentMethodLabel(t.method)}</span>
-                  <span>·</span>
-                  <span className="font-mono">{t.id}</span>
+              )}
+            </div>
+
+            <DashedRule />
+
+            <div className="flex items-center justify-between text-[11px] text-ink-600">
+              <span>{entry.kind === 'deposit' ? 'Deposit' : 'Receipt'}</span>
+              <span className="font-mono">{entry.number}</span>
+            </div>
+            <div className="mt-1 flex items-center justify-between text-[11px] text-ink-600">
+              <span>Date</span>
+              <span>{formatDateTime(entry.date)}</span>
+            </div>
+            <div className="mt-1 flex items-center justify-between text-[11px] text-ink-600">
+              <span>Card</span>
+              <span className="font-mono">{entry.cardNumber}</span>
+            </div>
+            <div className="mt-1 flex items-center justify-between text-[11px] text-ink-600">
+              <span>Method</span>
+              <span>{paymentMethodLabel(entry.method)}</span>
+            </div>
+            {t && (
+              <div className="mt-1 flex items-center justify-between text-[11px] text-ink-600">
+                <span>Cashier</span>
+                <span>{t.operatorEmail.split('@')[0]}</span>
+              </div>
+            )}
+            {d?.by && (
+              <div className="mt-1 flex items-center justify-between text-[11px] text-ink-600">
+                <span>Received by</span>
+                <span>{d.by}</span>
+              </div>
+            )}
+
+            <DashedRule />
+
+            {t ? (
+              <>
+                <div className="space-y-1.5">
+                  <div className="flex text-[11px] font-bold uppercase tracking-wide text-ink-700">
+                    <span className="flex-1">Item</span>
+                    <span className="w-10 text-right">Qty</span>
+                    <span className="w-16 text-right">Total</span>
+                  </div>
+                  {t.items.map((it, idx) => (
+                    <div key={idx} className="text-[11px] text-ink-800">
+                      <div className="truncate font-semibold">{it.name}</div>
+                      <div className="mt-0.5 flex text-ink-500">
+                        <span className="flex-1 truncate">{currency(it.price)} each</span>
+                        <span className="w-10 text-right">×{it.qty}</span>
+                        <span className="w-16 text-right font-semibold text-ink-900">
+                          {currency(it.price * it.qty)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
+
+                <DashedRule />
+
+                <div className="space-y-1 text-[12px]">
+                  <ReceiptRow label="Items" value={String(entry.itemCount)} />
+                  <ReceiptRow label="Subtotal" value={currency(t.subtotal)} />
+                  {t.discount > 0 && (
+                    <ReceiptRow label="Discount" value={`-${currency(t.discount)}`} />
+                  )}
+                  <div className="pt-1">
+                    <ReceiptRow
+                      label={entry.category === 'refund' ? 'REFUNDED' : 'TOTAL'}
+                      value={currency(t.total)}
+                      bold
+                    />
+                  </div>
+                  {t.method === 'cash' && typeof t.change === 'number' && (
+                    <>
+                      <ReceiptRow
+                        label="Tendered"
+                        value={currency(t.amountTendered ?? t.total)}
+                      />
+                      <ReceiptRow label="Change" value={currency(t.change)} bold />
+                    </>
+                  )}
+                  {t.reference && <ReceiptRow label="Reference" value={t.reference} />}
+                </div>
+              </>
+            ) : d ? (
+              <div className="space-y-1 text-[12px]">
+                <ReceiptRow label="Deposit" value={currency(d.amount)} bold />
+                {d.reference && <ReceiptRow label="Reference" value={d.reference} />}
+                {d.note && (
+                  <div className="pt-1 text-[11px] text-ink-600">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-ink-500">
+                      Note
+                    </div>
+                    <div className="mt-0.5">{d.note}</div>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            <DashedRule />
+
+            <div className="rounded-xl bg-ink-50 p-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-ink-600">
+                  Balance after
+                </span>
+                <span className="font-mono text-sm font-extrabold text-ink-900">
+                  {currency(entry.resultingBalance)}
+                </span>
+              </div>
+              <div className="mt-0.5 text-right text-[10px] text-ink-500">
+                Card {entry.cardNumber}
               </div>
             </div>
-          </li>
-        )
-      })}
-    </ul>
+
+            <DashedRule />
+
+            <div className="text-center text-[11px] text-ink-500">
+              {business?.receiptHeader || 'Thanks for visiting!'}
+            </div>
+            <div className="text-center text-[10px] text-ink-400">
+              {business?.receiptFooter || 'See you again soon!'}
+            </div>
+          </div>
+
+          <div className="mx-auto mt-3 w-full max-w-[360px] rounded-2xl border border-ink-100 bg-ink-50/50 p-3 text-[11px] leading-relaxed text-ink-500">
+            This is a read-only record of activity on your card. Balances can only be
+            changed by staff — contact the store if anything looks wrong.
+          </div>
+        </div>
+
+        <div className="border-t border-ink-100 p-3">
+          <button onClick={onClose} className="btn-secondary w-full py-3">
+            Close
+          </button>
+        </div>
+      </div>
+      <style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
+    </div>
+  )
+}
+
+function ReceiptRow({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
+  return (
+    <div
+      className={`flex items-center justify-between ${
+        bold ? 'text-[14px] font-extrabold uppercase tracking-wide text-ink-900' : 'text-ink-700'
+      }`}
+    >
+      <span>{label}</span>
+      <span className="font-mono">{value}</span>
+    </div>
+  )
+}
+
+function DashedRule() {
+  return (
+    <div
+      aria-hidden
+      className="my-3 h-px w-full"
+      style={{
+        backgroundImage: 'linear-gradient(to right, currentColor 50%, transparent 50%)',
+        backgroundSize: '6px 1px',
+        backgroundRepeat: 'repeat-x',
+        color: '#d5d8dd',
+      }}
+    />
   )
 }
 
 function DepositsTab({
   deposits,
+  requests,
   cards,
   onRequest,
+  onCancelRequest,
 }: {
   deposits: CardDeposit[]
+  requests: DepositRequest[]
   cards: MembershipCard[]
   onRequest: () => void
+  onCancelRequest: (id: string) => void
 }) {
-  if (deposits.length === 0) {
-    return (
-      <div>
-        <button
-          onClick={onRequest}
-          className="mb-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-ink-900 px-4 py-3 text-sm font-bold text-white shadow-pop"
-        >
-          <Sparkles className="h-4 w-4" /> Request a top-up
-        </button>
+  const pending = requests.filter((r) => r.status === 'pending')
+  const historical = requests.filter((r) => r.status !== 'pending')
+
+  return (
+    <div>
+      <button
+        onClick={onRequest}
+        className="mb-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-ink-900 px-4 py-3 text-sm font-bold text-white shadow-pop disabled:opacity-50"
+        disabled={pending.length > 0}
+      >
+        <Sparkles className="h-4 w-4" /> Request a top-up
+      </button>
+
+      {pending.length > 0 && (
+        <div className="mb-3 space-y-2">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">
+            Pending requests
+          </div>
+          {pending.map((r) => {
+            const card = cards.find((c) => c.id === r.cardId)
+            const tone = depositRequestStatusTone(r.status)
+            return (
+              <div
+                key={r.id}
+                className={`rounded-2xl border ${tone.border} ${tone.bg} p-3`}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${tone.bg} ${tone.text}`}
+                  >
+                    <Clock className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="truncate text-sm font-bold text-ink-900">
+                        +{currency(r.amount)}
+                      </div>
+                      <span
+                        className={`shrink-0 inline-flex items-center gap-1 rounded-pill border ${tone.border} bg-white px-2 py-0.5 text-[10px] font-bold ${tone.text}`}
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                        {depositRequestStatusLabel(r.status)}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-ink-600">
+                      <span>{paymentMethodLabel(r.method)}</span>
+                      {card && (
+                        <>
+                          <span>·</span>
+                          <span className="font-mono">{maskCardNumber(card.cardNumber)}</span>
+                        </>
+                      )}
+                      {r.reference && (
+                        <>
+                          <span>·</span>
+                          <span className="font-mono">{r.reference}</span>
+                        </>
+                      )}
+                      <span>·</span>
+                      <span>submitted {formatRelative(r.requestedAt)}</span>
+                    </div>
+                    {r.note && (
+                      <div className="mt-1.5 rounded-lg bg-white/60 p-2 text-[11px] text-ink-700">
+                        {r.note}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => onCancelRequest(r.id)}
+                    className="rounded-pill border border-ink-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-ink-700 hover:bg-ink-50"
+                  >
+                    Cancel request
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {historical.length > 0 && (
+        <div className="mb-3">
+          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+            Request history
+          </div>
+          <ul className="space-y-2">
+            {historical.map((r) => {
+              const card = cards.find((c) => c.id === r.cardId)
+              const display = displayStatus(r.status)
+              const tone = display.tone
+              const reviewedAt = r.reviewedAt ?? r.requestedAt
+              return (
+                <li
+                  key={r.id}
+                  className="rounded-2xl border border-ink-100 bg-white p-3 shadow-soft"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${tone.bg} ${tone.text}`}>
+                      <ArrowDownToLine className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="truncate text-sm font-semibold text-ink-900">
+                          {currency(r.amount)}
+                        </div>
+                        <span
+                          className={`shrink-0 inline-flex items-center gap-1 rounded-pill border px-2 py-0.5 text-[10px] font-bold ${tone.bg} ${tone.text} ${tone.border}`}
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                          {display.label}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-ink-500">
+                        <span>{paymentMethodLabel(r.method)}</span>
+                        {card && (
+                          <>
+                            <span>·</span>
+                            <span className="font-mono">{maskCardNumber(card.cardNumber)}</span>
+                          </>
+                        )}
+                        <span>·</span>
+                        <span>{formatDateTime(reviewedAt)}</span>
+                      </div>
+                      {r.rejectionReason && (
+                        <div className="mt-1.5 rounded-lg border border-rose-200 bg-rose-50 p-2 text-[11px] text-rose-700">
+                          <b>Rejected:</b> {r.rejectionReason}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+
+      {deposits.length === 0 ? (
         <EmptyState
           title="No top-ups yet"
           description="Use the button above to ask staff to add funds to your card."
           Icon={ArrowDownToLine}
         />
-      </div>
-    )
-  }
-  return (
-    <div>
-      <button
-        onClick={onRequest}
-        className="mb-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-ink-900 px-4 py-3 text-sm font-bold text-white shadow-pop"
-      >
-        <Sparkles className="h-4 w-4" /> Request a top-up
-      </button>
-      <ul className="space-y-2">
-        {deposits.map((d) => {
-          const card = cards.find((c) => c.id === d.cardId)
-          return (
-            <li
-              key={d.id}
-              className="rounded-2xl border border-ink-100 bg-white p-3 shadow-soft"
-            >
-              <div className="flex items-start gap-3">
-                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-700">
-                  <ArrowDownToLine className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="truncate text-sm font-semibold text-ink-900">
-                      +{currency(d.amount)}
+      ) : (
+        <>
+          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+            Credited top-ups
+          </div>
+          <ul className="space-y-2">
+            {deposits.map((d) => {
+              const card = cards.find((c) => c.id === d.cardId)
+              return (
+                <li
+                  key={d.id}
+                  className="rounded-2xl border border-ink-100 bg-white p-3 shadow-soft"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-700">
+                      <ArrowDownToLine className="h-4 w-4" />
                     </div>
-                    <div className="shrink-0 text-[11px] text-ink-500">
-                      {formatDateTime(d.at)}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="truncate text-sm font-semibold text-ink-900">
+                          +{currency(d.amount)}
+                        </div>
+                        <div className="shrink-0 text-[11px] text-ink-500">
+                          {formatDateTime(d.at)}
+                        </div>
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-ink-500">
+                        <span>{paymentMethodLabel(d.method as never)}</span>
+                        {card && (
+                          <>
+                            <span>·</span>
+                            <span className="font-mono">{maskCardNumber(card.cardNumber)}</span>
+                          </>
+                        )}
+                        {d.reference && (
+                          <>
+                            <span>·</span>
+                            <span className="font-mono">{d.reference}</span>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-ink-500">
-                    <span>{paymentMethodLabel(d.method as never)}</span>
-                    {card && (
-                      <>
-                        <span>·</span>
-                        <span className="font-mono">{maskCardNumber(card.cardNumber)}</span>
-                      </>
-                    )}
-                    {d.reference && (
-                      <>
-                        <span>·</span>
-                        <span className="font-mono">{d.reference}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </li>
-          )
-        })}
-      </ul>
+                </li>
+              )
+            })}
+          </ul>
+        </>
+      )}
     </div>
   )
 }
@@ -823,37 +1506,6 @@ function AccountRow({
   )
 }
 
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-ink-100 bg-white px-3 py-2 text-center shadow-soft">
-      <div className="text-[10px] uppercase tracking-wider text-ink-500">{label}</div>
-      <div className="text-xs font-bold text-ink-900">{value}</div>
-    </div>
-  )
-}
-
-function SummaryTile({
-  Icon,
-  tone,
-  label,
-  value,
-}: {
-  Icon: typeof Sparkles
-  tone: string
-  label: string
-  value: string
-}) {
-  return (
-    <div className={`rounded-2xl border bg-white p-3 shadow-soft ${tone}`}>
-      <div className="flex items-center gap-2">
-        <Icon className="h-3.5 w-3.5" />
-        <div className="text-[10px] font-bold uppercase tracking-wider">{label}</div>
-      </div>
-      <div className="mt-1 text-lg font-extrabold">{value}</div>
-    </div>
-  )
-}
-
 function Row({
   title,
   subtitle,
@@ -886,6 +1538,16 @@ function Row({
   )
 }
 
+function displayStatus(s: DepositRequestStatus): {
+  label: string
+  tone: { bg: string; text: string; border: string }
+} {
+  if (s === 'completed') {
+    return { label: 'Approved', tone: depositRequestStatusTone('approved') }
+  }
+  return { label: depositRequestStatusLabel(s), tone: depositRequestStatusTone(s) }
+}
+
 function EmptyState({
   title,
   description,
@@ -909,27 +1571,64 @@ function EmptyState({
 function TopupRequestDrawer({
   member,
   cards,
+  existingPending,
   onClose,
   onSubmit,
 }: {
   member: NonNullable<ReturnType<typeof getMember>>
   cards: MembershipCard[]
+  existingPending: DepositRequest | null
   onClose: () => void
-  onSubmit: (amount: number, method: 'cash' | 'card' | 'bank' | 'wallet') => void
+  onSubmit: (input: {
+    cardId: string
+    amount: number
+    method: 'cash' | 'card' | 'bank' | 'wallet'
+    reference?: string
+    note?: string
+    attachmentName?: string
+  }) => void
 }) {
   const [amount, setAmount] = useState('50')
   const [method, setMethod] = useState<'cash' | 'card' | 'bank' | 'wallet'>('cash')
   const [cardId, setCardId] = useState<string>(cards[0]?.id ?? '')
+  const [reference, setReference] = useState('')
+  const [note, setNote] = useState('')
+  const [attachmentName, setAttachmentName] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
+
+  function submit() {
+    if (submitting) return
+    const amt = Math.max(1, Number(amount) || 0)
+    if (amt <= 0) {
+      setLocalError('Please enter an amount greater than zero.')
+      return
+    }
+    if (!cardId) {
+      setLocalError('Please select a card to apply the top-up to.')
+      return
+    }
+    setLocalError(null)
+    setSubmitting(true)
+    onSubmit({
+      cardId,
+      amount: amt,
+      method,
+      reference: reference.trim() || undefined,
+      note: note.trim() || undefined,
+      attachmentName: attachmentName.trim() || undefined,
+    })
+  }
 
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-ink-900/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="absolute inset-x-0 bottom-0 flex max-h-[90vh] flex-col overflow-hidden rounded-t-3xl bg-white shadow-pop animate-[slideUp_0.25s_ease-out]">
+      <div className="absolute inset-x-0 bottom-0 flex max-h-[92vh] flex-col overflow-hidden rounded-t-3xl bg-white shadow-pop animate-[slideUp_0.25s_ease-out]">
         <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3">
           <div>
             <div className="text-base font-bold text-ink-900">Request a top-up</div>
             <p className="text-[11px] text-ink-500">
-              Staff will be notified and confirm the request shortly.
+              Staff will review and confirm. Your balance won't change until they approve.
             </p>
           </div>
           <button
@@ -941,6 +1640,21 @@ function TopupRequestDrawer({
           </button>
         </div>
         <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+          {existingPending && (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800">
+              <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <div>
+                <div className="font-semibold">You already have a pending request</div>
+                <div className="text-amber-700">
+                  For {currency(existingPending.amount)} via{' '}
+                  {paymentMethodLabel(existingPending.method)} ·{' '}
+                  {formatRelative(existingPending.requestedAt)}. Cancel it from the
+                  Top-ups tab before submitting a new one.
+                </div>
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="label">Amount</label>
             <div className="grid grid-cols-4 gap-2">
@@ -970,6 +1684,7 @@ function TopupRequestDrawer({
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 className="input pl-7 text-base font-bold"
+                aria-label="Amount"
               />
             </div>
           </div>
@@ -1011,17 +1726,101 @@ function TopupRequestDrawer({
             </div>
           )}
 
+          <div>
+            <label className="label">Reference / transaction number</label>
+            <div className="relative">
+              <FileText className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+              <input
+                className="input pl-9"
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                placeholder="e.g. TRF-392814 or transfer ID"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Note (optional)</label>
+            <textarea
+              className="input min-h-[64px] resize-y"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Anything staff should know about this request?"
+              maxLength={240}
+            />
+            <div className="mt-1 text-right text-[10px] text-ink-400">
+              {note.length}/240
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Receipt attachment (optional)</label>
+            <label
+              className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-ink-200 bg-ink-50/40 px-3 py-2.5 text-sm text-ink-700 hover:bg-ink-50"
+            >
+              <Paperclip className="h-4 w-4 text-ink-500" />
+              <span className="flex-1 truncate">
+                {attachmentName || 'Attach a file name (receipt.jpg, transfer.pdf)'}
+              </span>
+              {attachmentName ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    setAttachmentName('')
+                  }}
+                  className="text-[11px] font-semibold text-rose-600 hover:underline"
+                >
+                  Remove
+                </button>
+              ) : (
+                <span className="text-[11px] font-semibold text-brand-700">Browse</span>
+              )}
+              <input
+                type="file"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) setAttachmentName(f.name)
+                }}
+              />
+            </label>
+            <div className="mt-1 text-[10px] text-ink-400">
+              File name is shared with staff for reference. The file itself stays on your
+              device — bring the original to staff if they need to verify.
+            </div>
+          </div>
+
+          {localError && (
+            <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[11px] text-rose-700">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{localError}</span>
+            </div>
+          )}
+
           <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-[11px] text-emerald-800">
             <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            You'll get a notification once staff confirms. No money moves until then.
+            <div>
+              <div className="font-semibold">No money moves until staff approve</div>
+              <div>
+                You'll see this request as <b>Pending</b> on the Top-ups tab. Once staff
+                approve, your balance updates automatically.
+              </div>
+            </div>
           </div>
         </div>
         <div className="border-t border-ink-100 p-3">
           <button
-            onClick={() => onSubmit(Math.max(1, Number(amount) || 0), method)}
-            className="btn-primary w-full py-3"
+            onClick={submit}
+            disabled={submitting || !!existingPending}
+            className="btn-primary w-full py-3 disabled:opacity-50"
           >
-            <Sparkles className="h-4 w-4" /> Send request
+            {submitting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
+            Send request
           </button>
         </div>
       </div>

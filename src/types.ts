@@ -148,6 +148,33 @@ export interface CardDeposit {
   note?: string
 }
 
+export type DepositRequestStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'cancelled'
+  | 'completed'
+
+export interface DepositRequest {
+  id: string
+  businessId: string
+  cardId: string
+  memberId: string
+  amount: number
+  method: 'cash' | 'card' | 'bank' | 'wallet'
+  reference?: string
+  note?: string
+  attachmentName?: string
+  status: DepositRequestStatus
+  requestedAt: string
+  requestedBy: string
+  reviewedAt?: string
+  reviewedBy?: string
+  rejectionReason?: string
+  resultingDepositId?: string
+  resultingTransactionId?: string
+}
+
 export type PaymentMethod = 'cash' | 'card' | 'bank' | 'wallet' | 'membership'
 
 export type TransactionStatus = 'completed' | 'pending' | 'refunded' | 'failed'

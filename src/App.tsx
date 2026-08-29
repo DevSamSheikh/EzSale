@@ -16,6 +16,7 @@ import UserDetailsPage from './pages/app/UserDetailsPage'
 import CardsPage from './pages/app/CardsPage'
 import CardDetailsPage from './pages/app/CardDetailsPage'
 import DepositsPage from './pages/app/DepositsPage'
+import DepositRequestsPage from './pages/app/DepositRequestsPage'
 import TransactionsPage from './pages/app/TransactionsPage'
 import ReportsPage from './pages/app/ReportsPage'
 import AnalyticsPage from './pages/app/AnalyticsPage'
@@ -85,6 +86,7 @@ export default function App() {
           <Route path="cards" element={<CardsPage />} />
           <Route path="cards/:cardId" element={<CardDetailsPage />} />
           <Route path="deposits" element={<DepositsPage />} />
+          <Route path="deposit-requests" element={<DepositRequestsPage />} />
           <Route path="transactions" element={<TransactionsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
