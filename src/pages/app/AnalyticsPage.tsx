@@ -452,7 +452,7 @@ function FilterBar({
         <div
           role="tablist"
           aria-label="Time range"
-          className="inline-flex w-fit items-center rounded-pill border border-ink-200 bg-white p-0.5"
+          className="inline-flex w-fit shrink-0 items-center rounded-pill border border-ink-200 bg-white p-0.5"
         >
           {presets.map((p) => (
             <button
@@ -477,7 +477,7 @@ function FilterBar({
           ))}
         </div>
 
-        <div className="flex flex-1 flex-wrap items-center gap-2">
+        <div className="flex flex-1 flex-wrap items-center gap-2 lg:justify-end">
           <SelectChip
             label="Category"
             value={filter.category}
@@ -505,7 +505,7 @@ function FilterBar({
           <div
             role="tablist"
             aria-label="Comparison"
-            className="inline-flex items-center rounded-pill border border-ink-200 bg-white p-0.5"
+            className="inline-flex shrink-0 items-center rounded-pill border border-ink-200 bg-white p-0.5"
           >
             {(
               [
@@ -1049,8 +1049,8 @@ function PaymentMethodDistribution({ totals }: { totals: PeriodTotals }) {
         <PieChartIcon className="h-4 w-4 text-ink-400" />
       </div>
 
-      <div className="mt-3 flex flex-col items-center gap-3 sm:flex-row sm:items-center sm:gap-4">
-        <svg viewBox="0 0 180 180" className="h-40 w-40 shrink-0">
+      <div className="mt-3 flex flex-col items-center gap-3">
+        <svg viewBox="0 0 180 180" className="h-36 w-36">
           {total === 0 ? (
             <circle cx={cx} cy={cy} r={r} fill="none" stroke="#eceef0" strokeWidth="22" />
           ) : (
@@ -1077,11 +1077,18 @@ function PaymentMethodDistribution({ totals }: { totals: PeriodTotals }) {
           {entries.map((e) => {
             const pct = total > 0 ? (e.value / total) * 100 : 0
             return (
-              <li key={e.method} className="flex items-center gap-2 text-xs">
-                <span className={`inline-block h-2.5 w-2.5 rounded-sm ${METHOD_BG[e.method]}`} />
-                <span className="flex-1 font-semibold text-ink-800">{e.label}</span>
-                <span className="font-mono text-ink-600">{e.value}</span>
-                <span className="w-10 text-right text-ink-500">{pct.toFixed(0)}%</span>
+              <li
+                key={e.method}
+                className="flex items-center gap-2 text-xs"
+              >
+                <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-sm ${METHOD_BG[e.method]}`} />
+                <span className="flex-1 truncate font-semibold text-ink-800" title={e.label}>
+                  {e.label}
+                </span>
+                <span className="shrink-0 font-mono text-ink-600">{e.value}</span>
+                <span className="w-10 shrink-0 text-right tabular-nums text-ink-500">
+                  {pct.toFixed(0)}%
+                </span>
               </li>
             )
           })}

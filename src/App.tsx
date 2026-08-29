@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
 import AppShell from './components/AppShell'
+import { applyTheme, getTheme } from './theme'
 import LoginPage from './pages/auth/LoginPage'
 import SignupPage from './pages/auth/SignupPage'
 import ForgotPage from './pages/auth/ForgotPage'
@@ -47,10 +48,20 @@ function ScrollToTop() {
   return null
 }
 
+function ThemeSync() {
+  useEffect(() => {
+    // Re-apply the saved theme in case the bootstrap script didn't run
+    // (e.g. during hot reload) so the DOM and the saved theme stay in sync.
+    applyTheme(getTheme())
+  }, [])
+  return null
+}
+
 export default function App() {
   return (
     <>
       <ScrollToTop />
+      <ThemeSync />
       <Routes>
         <Route path="/" element={<Navigate to="/app/pos" replace />} />
         <Route path="/login" element={<LoginPage />} />

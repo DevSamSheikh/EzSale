@@ -1,6 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { Bell, ChevronDown, LogOut, Menu, Plus, Search, Settings as Cog, User } from 'lucide-react'
+import {
+  Bell,
+  ChevronDown,
+  ChevronRight,
+  LogOut,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Search,
+  Settings as Cog,
+  User,
+} from 'lucide-react'
 import { Logo } from './Primitives'
 import { NavIcon } from './NavIcon'
 import { BusinessTypeIcon } from '../icons'
@@ -13,7 +25,15 @@ const DEMO_BUSINESSES = [
   { id: 'b3', name: 'PixelPlay Arcade', type: 'gaming' as const },
 ]
 
-export function Topbar({ onMenu }: { onMenu: () => void }) {
+export function Topbar({
+  onMenu,
+  sidebarCollapsed = false,
+  onToggleSidebar,
+}: {
+  onMenu: () => void
+  sidebarCollapsed?: boolean
+  onToggleSidebar?: () => void
+}) {
   const navigate = useNavigate()
   const business = getBusiness()
   const auth = getAuth()
@@ -71,6 +91,22 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
       >
         <Menu className="h-5 w-5" />
       </button>
+
+      {/* Sidebar expand / collapse (desktop only) */}
+      {onToggleSidebar && (
+        <button
+          onClick={onToggleSidebar}
+          className="hidden h-9 w-9 shrink-0 place-items-center rounded-xl border border-ink-200 bg-white text-ink-500 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-ink-900 lg:grid"
+          title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {sidebarCollapsed ? (
+            <PanelLeftOpen className="h-4 w-4" />
+          ) : (
+            <PanelLeftClose className="h-4 w-4" />
+          )}
+        </button>
+      )}
 
       <div className="lg:hidden">
         <Logo size={26} />

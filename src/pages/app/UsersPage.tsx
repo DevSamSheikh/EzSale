@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   ChevronLeft,
@@ -16,7 +16,6 @@ import {
   Phone,
   Play,
   Plus,
-  Search,
   ShieldOff,
   UserCog,
   Users as UsersIcon,
@@ -158,7 +157,6 @@ export default function UsersPage() {
   const [members, setMembers] = useState<Member[]>([])
   const [cards, setCards] = useState<MembershipCard[]>([])
   const [txns, setTxns] = useState<Transaction[]>([])
-  const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all')
   const [typeFilter, setTypeFilter] = useState<Member['type'] | 'all'>('all')
@@ -244,7 +242,6 @@ export default function UsersPage() {
   }, [members, cardsByMember, balanceByMember])
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
     return members.filter((m) => {
       if (statusFilter !== 'all' && m.status !== statusFilter) return false
       if (typeFilter !== 'all' && m.type !== typeFilter) return false
@@ -260,17 +257,13 @@ export default function UsersPage() {
         }
         if (quickFilter === 'suspended' && m.status !== 'suspended') return false
       }
-      if (q) {
-        const hay = [m.name, m.email, m.phone, m.id, tierByMember.get(m.id) ?? ''].filter(Boolean).join(' ').toLowerCase()
-        if (!hay.includes(q)) return false
-      }
       return true
     })
-  }, [members, search, statusFilter, typeFilter, tierFilter, quickFilter, cardsByMember])
+  }, [members, statusFilter, typeFilter, tierFilter, quickFilter, cardsByMember])
 
   useEffect(() => {
     setPage(1)
-  }, [search, statusFilter, typeFilter, tierFilter, quickFilter, pageSize])
+  }, [statusFilter, typeFilter, tierFilter, quickFilter, pageSize])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const safePage = Math.min(page, totalPages)
@@ -290,7 +283,6 @@ export default function UsersPage() {
   }, [totalPages, safePage])
 
   function resetFilters() {
-    setSearch('')
     setStatusFilter('all')
     setTypeFilter('all')
     setTierFilter('all')
@@ -371,25 +363,7 @@ export default function UsersPage() {
       </div>
 
       <div className="card p-4 sm:p-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative min-w-0 lg:flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={`Search by name, email, phone, or tier…`}
-              className="input pl-9"
-            />
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"
-                aria-label="Clear search"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-end">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1 rounded-pill border border-ink-200 bg-white p-1">
               <Filter className="ml-2 h-3.5 w-3.5 text-ink-400" />
@@ -460,8 +434,7 @@ export default function UsersPage() {
             {stats.withCard > 0 ? ` · ${stats.withCard} with cards` : ''}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {(search ||
-              statusFilter !== 'all' ||
+            {(statusFilter !== 'all' ||
               typeFilter !== 'all' ||
               tierFilter !== 'all' ||
               quickFilter !== 'all') && (
@@ -770,9 +743,36 @@ function RowActions({
   onSuspend: () => void
 }) {
   const [open, setOpen] = useState(false)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
+
+  useEffect(() => {
+    if (!open) {
+      setPos(null)
+      return
+    }
+    function place() {
+      const r = btnRef.current?.getBoundingClientRect()
+      if (!r) return
+      const menuH = menuRef.current?.offsetHeight ?? 180
+      const top = Math.min(window.innerHeight - menuH - 8, r.bottom + 6)
+      const right = Math.max(8, window.innerWidth - r.right)
+      setPos({ top, right })
+    }
+    place()
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    return () => {
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
+    }
+  }, [open])
+
   return (
     <div className="relative inline-flex">
       <button
+        ref={btnRef}
         onClick={() => setOpen((v) => !v)}
         className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
         aria-label="Actions"
@@ -781,12 +781,14 @@ function RowActions({
       >
         <MoreVertical className="h-3.5 w-3.5" />
       </button>
-      {open && (
+      {open && pos && (
         <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-[55]" onClick={() => setOpen(false)} />
           <div
+            ref={menuRef}
             role="menu"
-            className="absolute right-0 top-9 z-40 w-44 overflow-hidden rounded-xl border border-ink-100 bg-white shadow-pop"
+            style={{ position: 'fixed', top: pos.top, right: pos.right }}
+            className="z-[60] w-44 overflow-hidden rounded-xl border border-ink-100 bg-white shadow-pop"
           >
             <button
               onClick={() => {

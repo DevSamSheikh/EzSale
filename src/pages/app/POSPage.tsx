@@ -21,6 +21,7 @@ import {
   getCart,
   getCategories,
   getProducts,
+  PRODUCTS_UPDATED_EVENT,
   removeFromCart,
   setCartQty,
   type POSProduct,
@@ -600,8 +601,24 @@ export default function POSPage() {
   }, [customValue])
 
   useEffect(() => {
-    setProducts(getProducts())
-    setCart(getCart())
+    function refresh() {
+      // Only sell products that are explicitly active + available. Drafts,
+      // inactive, and archived items still live in the products module but
+      // should never reach the POS till an admin re-enables them.
+      setProducts(
+        getProducts().filter(
+          (p) => p.status === 'active' && p.available !== false,
+        ),
+      )
+      setCart(getCart())
+    }
+    refresh()
+    window.addEventListener(PRODUCTS_UPDATED_EVENT, refresh)
+    window.addEventListener('storage', refresh)
+    return () => {
+      window.removeEventListener(PRODUCTS_UPDATED_EVENT, refresh)
+      window.removeEventListener('storage', refresh)
+    }
   }, [])
 
   useEffect(() => {

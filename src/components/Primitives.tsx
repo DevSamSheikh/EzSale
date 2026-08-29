@@ -2,7 +2,13 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 
-export function Logo({ size = 28 }: { size?: number }) {
+export function Logo({
+  size = 28,
+  showName = true,
+}: {
+  size?: number
+  showName?: boolean
+}) {
   return (
     <div className="flex items-center gap-2.5">
       <div
@@ -18,7 +24,9 @@ export function Logo({ size = 28 }: { size?: number }) {
           />
         </svg>
       </div>
-      <span className="text-base font-extrabold tracking-tight text-ink-900">EzSale</span>
+      {showName && (
+        <span className="text-base font-extrabold tracking-tight text-ink-900">EzSale</span>
+      )}
     </div>
   )
 }

@@ -4,31 +4,35 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Brand: lime / neon green
+        // Brand and ink are CSS variables so the theme module can reskin
+        // the entire app by updating :root. The `<alpha-value>` placeholder
+        // is required for Tailwind to generate opacity modifiers
+        // (e.g. `bg-brand-500/60`).
         brand: {
-          50: '#f3ffe6',
-          100: '#e6ffce',
-          200: '#cfff9d',
-          300: '#b8ff6c',
-          400: '#9eff3a',
-          500: '#84eb0a',
-          600: '#6cc800',
-          700: '#559c00',
-          800: '#437800',
-          900: '#355c00',
+          50: 'rgb(var(--brand-50-rgb) / <alpha-value>)',
+          100: 'rgb(var(--brand-100-rgb) / <alpha-value>)',
+          200: 'rgb(var(--brand-200-rgb) / <alpha-value>)',
+          300: 'rgb(var(--brand-300-rgb) / <alpha-value>)',
+          400: 'rgb(var(--brand-400-rgb) / <alpha-value>)',
+          500: 'rgb(var(--brand-500-rgb) / <alpha-value>)',
+          600: 'rgb(var(--brand-600-rgb) / <alpha-value>)',
+          700: 'rgb(var(--brand-700-rgb) / <alpha-value>)',
+          800: 'rgb(var(--brand-800-rgb) / <alpha-value>)',
+          900: 'rgb(var(--brand-900-rgb) / <alpha-value>)',
+          DEFAULT: 'rgb(var(--brand-500-rgb) / <alpha-value>)',
         },
-        // Dark charcoal text
         ink: {
-          50: '#f6f7f8',
-          100: '#eceef0',
-          200: '#d5d8dd',
-          300: '#b1b7c0',
-          400: '#7e8694',
-          500: '#535b6a',
-          600: '#3a414d',
-          700: '#2a3038',
-          800: '#1d2229',
-          900: '#13171c',
+          50: 'rgb(var(--ink-50-rgb) / <alpha-value>)',
+          100: 'rgb(var(--ink-100-rgb) / <alpha-value>)',
+          200: 'rgb(var(--ink-200-rgb) / <alpha-value>)',
+          300: 'rgb(var(--ink-300-rgb) / <alpha-value>)',
+          400: 'rgb(var(--ink-400-rgb) / <alpha-value>)',
+          500: 'rgb(var(--ink-500-rgb) / <alpha-value>)',
+          600: 'rgb(var(--ink-600-rgb) / <alpha-value>)',
+          700: 'rgb(var(--ink-700-rgb) / <alpha-value>)',
+          800: 'rgb(var(--ink-800-rgb) / <alpha-value>)',
+          900: 'rgb(var(--ink-900-rgb) / <alpha-value>)',
+          DEFAULT: 'rgb(var(--ink-900-rgb) / <alpha-value>)',
         },
       },
       fontFamily: {

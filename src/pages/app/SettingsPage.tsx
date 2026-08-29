@@ -1,14 +1,26 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { PageHeader } from '../../components/Primitives'
 import { BUSINESS_TYPES, CURRENCIES, TIMEZONES, TERMINOLOGY_BY_TYPE, getBusiness, saveBusiness } from '../../store'
 import type { Business } from '../../types'
-import { Save, Volume2, VolumeX } from 'lucide-react'
+import { Check, Palette, Save, Volume2, VolumeX } from 'lucide-react'
 import {
   getAudioSettings,
   playCue,
   setAudioEnabled,
   setAudioVolume,
 } from '../../audio'
+import {
+  applyTheme,
+  DEFAULT_THEME,
+  getTheme,
+  SECONDARY_PRESETS,
+  setBoth,
+  setPrimary,
+  setSecondary,
+  subscribeTheme,
+  THEME_PRESETS,
+  type Theme,
+} from '../../theme'
 
 const TABS = ['General', 'Localization', 'Tax & receipts', 'POS', 'Billing'] as const
 
@@ -73,27 +85,31 @@ export default function SettingsPage() {
 
         <div className="p-5 sm:p-6">
           {tab === 'General' && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="label">Business name</label>
-                <input className="input" value={b.name} onChange={(e) => setB({ ...b, name: e.target.value })} />
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="label">Business name</label>
+                  <input className="input" value={b.name} onChange={(e) => setB({ ...b, name: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Business type</label>
+                  <select className="input" value={b.type} onChange={(e) => setB({ ...b, type: e.target.value as Business['type'] })}>
+                    {BUSINESS_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Contact email</label>
+                  <input className="input" value={b.contactEmail} onChange={(e) => setB({ ...b, contactEmail: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Contact phone</label>
+                  <input className="input" value={b.contactPhone} onChange={(e) => setB({ ...b, contactPhone: e.target.value })} />
+                </div>
               </div>
-              <div>
-                <label className="label">Business type</label>
-                <select className="input" value={b.type} onChange={(e) => setB({ ...b, type: e.target.value as Business['type'] })}>
-                  {BUSINESS_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="label">Contact email</label>
-                <input className="input" value={b.contactEmail} onChange={(e) => setB({ ...b, contactEmail: e.target.value })} />
-              </div>
-              <div>
-                <label className="label">Contact phone</label>
-                <input className="input" value={b.contactPhone} onChange={(e) => setB({ ...b, contactPhone: e.target.value })} />
-              </div>
+
+              <AppearanceSection />
             </div>
           )}
 
@@ -254,4 +270,197 @@ function SoundsSettings() {
       </div>
     </div>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Appearance section
+// ---------------------------------------------------------------------------
+
+function AppearanceSection() {
+  const [theme, setThemeState] = useState<Theme>(() => getTheme())
+
+  useEffect(() => {
+    return subscribeTheme((next) => setThemeState(next))
+  }, [])
+
+  function pickPrimary(hex: string) {
+    setPrimary(hex)
+  }
+
+  function pickSecondary(hex: string) {
+    setSecondary(hex)
+  }
+
+  function reset() {
+    setBoth(DEFAULT_THEME.primary, DEFAULT_THEME.secondary)
+  }
+
+  return (
+    <div className="rounded-2xl border border-ink-200 bg-white p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+            <Palette className="h-4 w-4 text-ink-500" /> Appearance
+          </div>
+          <p className="mt-1 max-w-md text-xs text-ink-500">
+            Pick an accent color and a neutral text color. Changes apply instantly across the entire app.
+          </p>
+        </div>
+        <button
+          onClick={reset}
+          className="rounded-pill border border-ink-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-ink-700 hover:bg-ink-50"
+        >
+          Reset to default
+        </button>
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 gap-6 md:grid-cols-2">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+            Theme color
+          </div>
+          <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6">
+            {THEME_PRESETS.map((p) => {
+              const active = p.primary.toLowerCase() === theme.primary.toLowerCase()
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => pickPrimary(p.primary)}
+                  className="group flex flex-col items-center gap-1.5"
+                  title={p.name}
+                  aria-label={p.name}
+                  aria-pressed={active}
+                >
+                  <span
+                    className={`relative grid h-9 w-9 place-items-center rounded-xl border transition-all ${
+                      active
+                        ? 'border-ink-900 ring-2 ring-ink-900/20'
+                        : 'border-ink-200 hover:border-ink-400'
+                    }`}
+                    style={{ background: p.primary }}
+                  >
+                    {active && (
+                      <Check
+                        className="h-4 w-4"
+                        style={{ color: isLight(p.primary) ? '#13171c' : '#ffffff' }}
+                      />
+                    )}
+                  </span>
+                  <span
+                    className={`text-[10px] font-semibold ${
+                      active ? 'text-ink-900' : 'text-ink-500'
+                    }`}
+                  >
+                    {p.primary}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-2 text-[11px] text-ink-500">
+            Pick a preset. The matching button label shows the hex value.
+          </p>
+        </div>
+
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+            Secondary color
+          </div>
+          <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6">
+            {SECONDARY_PRESETS.map((s) => {
+              const active = s.value.toLowerCase() === theme.secondary.toLowerCase()
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => pickSecondary(s.value)}
+                  className={`group relative grid h-9 w-9 place-items-center rounded-xl border transition-all ${
+                    active
+                      ? 'border-ink-900 ring-2 ring-ink-900/20'
+                      : 'border-ink-200 hover:border-ink-400'
+                  }`}
+                  style={{ background: s.value }}
+                  title={s.name}
+                  aria-label={s.name}
+                  aria-pressed={active}
+                >
+                  {active && (
+                    <Check
+                      className="h-4 w-4"
+                      style={{ color: isLight(s.value) ? '#13171c' : '#ffffff' }}
+                    />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-2 text-[11px] text-ink-500">
+            Used for dark surfaces (footer, dark stat cards, headings).
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+          Live preview
+        </div>
+        <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-ink-100 bg-ink-50 p-4">
+            <div className="flex items-center gap-2">
+              <span
+                className="grid h-8 w-8 place-items-center rounded-lg"
+                style={{ background: theme.primary }}
+              >
+                <span
+                  className="h-3 w-3 rounded-sm"
+                  style={{ background: isLight(theme.primary) ? '#13171c' : '#ffffff' }}
+                />
+              </span>
+              <div>
+                <div className="text-sm font-bold text-ink-900">EzSale</div>
+                <div className="text-[11px] text-ink-500">Brand square on neutral</div>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-ink-100 bg-white p-4">
+            <span
+              className="inline-flex items-center rounded-pill px-3 py-1 text-[11px] font-bold"
+              style={{ background: theme.primary, color: isLight(theme.primary) ? '#13171c' : '#ffffff' }}
+            >
+              Primary action
+            </span>
+            <div className="mt-2 text-xs text-ink-500">Active buttons, chips, links.</div>
+          </div>
+          <div
+            className="rounded-2xl p-4"
+            style={{ background: theme.secondary }}
+          >
+            <div className="text-xs" style={{ color: '#ffffff' }}>
+              Dark surface
+            </div>
+            <div className="text-[11px]" style={{ color: '#b1b7c0' }}>
+              Used for dark stat cards and footers.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function isLight(hex: string): boolean {
+  const cleaned = hex.replace('#', '').trim()
+  const full =
+    cleaned.length === 3
+      ? cleaned
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : cleaned
+  const num = parseInt(full, 16)
+  if (Number.isNaN(num)) return true
+  const r = (num >> 16) & 0xff
+  const g = (num >> 8) & 0xff
+  const b = num & 0xff
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+  return lum > 0.6
 }
