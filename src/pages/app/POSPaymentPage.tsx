@@ -7,10 +7,7 @@ import {
   Check,
   CheckCircle2,
   CreditCard,
-  Lock,
   NfcIcon,
-  ScanLine,
-  Search,
   ShieldCheck,
   Smartphone,
   Wallet,
@@ -18,17 +15,13 @@ import {
 import {
   chargeCard,
   createTransaction,
-  formatCardNumber,
-  getCardByNumber,
-  getCards,
-  getMember,
-  isCardUsable,
   paymentMethodLabel,
 } from '../../payment-store'
 import { getDefaultLocationId, getLocations, getLocation } from '../../orders-store'
 import { clearCart, getCart, getProducts } from '../../pos-store'
 import { getAuth, getBusiness } from '../../store'
 import { getActiveLocationIdSync } from '../../active-location'
+import { NFCScanExperience } from '../../components/NFCScanExperience'
 import type {
   Member,
   MembershipCard,
@@ -282,6 +275,7 @@ export default function POSPaymentPage() {
               <MembershipPanel
                 total={total}
                 onPay={finalize}
+                onCancel={() => setMethod('cash')}
               />
             )}
           </div>
@@ -709,267 +703,26 @@ interface CardLookup {
 function MembershipPanel({
   total,
   onPay,
+  onCancel,
 }: {
   total: number
   onPay: (extra: Partial<Transaction>) => void
+  onCancel?: () => void
 }) {
-  const [cardInput, setCardInput] = useState('')
-  const [lookup, setLookup] = useState<CardLookup | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [confirming, setConfirming] = useState(false)
-
-  function scan() {
-    setError(null)
-    setLookup(null)
-    const formatted = formatCardNumber(cardInput)
-    if (!formatted) {
-      setError('Enter or scan a card number.')
-      return
-    }
-    const result = getCardByNumber(formatted)
-    if (!result) {
-      setError('Card not found. Please check the number and try again.')
-      playCue('error')
-      return
-    }
-    if (!result.member) {
-      setError('This card is not assigned to a member and cannot be used for payment.')
-      playCue('error')
-      return
-    }
-    setLookup(result)
-    setCardInput(result.card.cardNumber)
-    playCue('success')
-  }
-
-  function reset() {
-    setLookup(null)
-    setError(null)
-    setConfirming(false)
-    setCardInput('')
-  }
-
-  const usable = lookup ? isCardUsable(lookup.card) : { ok: false }
-  const insufficient = lookup ? lookup.card.balance < total : false
-  const afterBalance = lookup ? Math.max(0, lookup.card.balance - total) : 0
-
-  function charge() {
-    if (!lookup || !lookup.member) return
-    playCue('tap')
+  function handleConfirm(payload: CardLookup) {
     onPay({
       method: 'membership',
-      memberId: lookup.member.id,
-      cardId: lookup.card.id,
-      cardNumber: lookup.card.cardNumber,
+      memberId: payload.member?.id,
+      cardId: payload.card.id,
+      cardNumber: payload.card.cardNumber,
     })
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-ink-100 bg-white p-5 shadow-soft sm:p-6">
-        <div className="text-sm font-bold text-ink-900">Membership card</div>
-        <p className="mt-1 text-xs text-ink-500">
-          Scan the customer's card or enter the card number manually.
-        </p>
-
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-          <div className="relative flex-1">
-            <ScanLine className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-            <input
-              className="input pl-9 font-mono tracking-wide"
-              value={cardInput}
-              onChange={(e) => setCardInput(formatCardNumber(e.target.value))}
-              onKeyDown={(e) => e.key === 'Enter' && scan()}
-              placeholder="EZ-1000-0000"
-              disabled={!!lookup}
-            />
-          </div>
-          {lookup ? (
-            <button onClick={reset} className="btn-secondary">
-              Clear
-            </button>
-          ) : (
-            <button onClick={scan} className="btn-primary rounded-pill">
-              <Search className="h-4 w-4" /> Find Card
-            </button>
-          )}
-        </div>
-
-        {error && (
-          <div className="mt-3 flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-            <Lock className="mt-0.5 h-4 w-4 shrink-0" />
-            <div>{error}</div>
-          </div>
-        )}
-
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-ink-500">
-          <span>Try a sample card:</span>
-          {['EZ-1000-4521', 'EZ-1000-7820', 'EZ-1000-9100', 'EZ-1000-3356'].map((n) => (
-            <button
-              key={n}
-              onClick={() => {
-                setCardInput(n)
-                setError(null)
-              }}
-              className="rounded-pill border border-ink-200 bg-white px-2 py-0.5 font-mono text-[11px] font-semibold text-ink-700 hover:bg-ink-50"
-            >
-              {n}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {lookup && lookup.member && (
-        <div className="rounded-2xl border border-ink-100 bg-white p-5 shadow-soft sm:p-6">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-sm font-bold text-ink-900">{lookup.member.name}</div>
-              <div className="text-[11px] text-ink-500">
-                {lookup.member.email || lookup.member.phone || '—'}
-              </div>
-            </div>
-            <StatusPill status={lookup.card.status} />
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard
-              variant="inline"
-              label="Card"
-              value={lookup.card.cardNumber}
-              className="[&_div:nth-child(2)]:font-mono [&_div:nth-child(2)]:tracking-wide"
-            />
-            <StatCard variant="inline" label="Tier" value={lookup.card.tier} />
-            <StatCard
-              variant="inline"
-              label="Available balance"
-              value={currency(lookup.card.balance)}
-              tone="brand"
-            />
-            <StatCard
-              variant="inline"
-              label="Expires"
-              value={new Date(lookup.card.expiresAt).toLocaleDateString()}
-            />
-          </div>
-
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard
-              variant="inline"
-              label="Daily limit"
-              value={currency(lookup.card.dailyLimit)}
-            />
-            <StatCard
-              variant="inline"
-              label="Monthly limit"
-              value={currency(lookup.card.monthlyLimit)}
-            />
-            <StatCard
-              variant="inline"
-              label="Issued"
-              value={new Date(lookup.card.issuedAt).toLocaleDateString()}
-            />
-            <StatCard variant="inline" label="Limits" value="Active" />
-          </div>
-
-          {!usable.ok && (
-            <div className="mt-4 flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-              <Lock className="mt-0.5 h-4 w-4 shrink-0" />
-              <div>
-                <div className="font-semibold">Transaction blocked</div>
-                <div className="text-xs">{usable.reason}</div>
-              </div>
-            </div>
-          )}
-
-          {usable.ok && (
-            <div className="mt-4 grid grid-cols-1 gap-3 rounded-2xl border border-ink-100 bg-ink-50/60 p-4 sm:grid-cols-3">
-              <div>
-                <div className="text-[11px] uppercase tracking-wide text-ink-500">Amount</div>
-                <div className="mt-0.5 text-lg font-bold text-ink-900">{currency(total)}</div>
-              </div>
-              <div>
-                <div className="text-[11px] uppercase tracking-wide text-ink-500">Balance before</div>
-                <div className="mt-0.5 text-lg font-bold text-ink-900">
-                  {currency(lookup.card.balance)}
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] uppercase tracking-wide text-ink-500">Balance after</div>
-                <div
-                  className={`mt-0.5 text-lg font-bold ${
-                    insufficient ? 'text-rose-600' : 'text-emerald-600'
-                  }`}
-                >
-                  {currency(afterBalance)}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {usable.ok && insufficient && (
-            <div className="mt-3 flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-              <Lock className="mt-0.5 h-4 w-4 shrink-0" />
-              <div>
-                <div className="font-semibold">Insufficient balance</div>
-                <div className="text-xs">
-                  Available {currency(lookup.card.balance)} but order total is {currency(total)}.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {usable.ok && !insufficient && (
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-xs text-ink-500">
-                Tap confirm to charge {currency(total)} from this membership card.
-              </div>
-              {!confirming ? (
-                <button
-                  onClick={() => setConfirming(true)}
-                  className="btn-primary rounded-pill py-3"
-                >
-                  <Check className="h-4 w-4" /> Confirm Charge
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setConfirming(false)}
-                    className="btn-secondary"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={charge}
-                    className="btn-primary rounded-pill py-3"
-                  >
-                    Charge Card
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function StatusPill({ status }: { status: MembershipCard['status'] }) {
-  const map: Record<MembershipCard['status'], { label: string; cls: string }> = {
-    active: { label: 'Active', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-    inactive: { label: 'Inactive', cls: 'bg-ink-100 text-ink-600 border-ink-200' },
-    blocked: { label: 'Blocked', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
-    expired: { label: 'Expired', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-    lost: { label: 'Lost', cls: 'bg-orange-50 text-orange-700 border-orange-200' },
-    replaced: { label: 'Replaced', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-  }
-  const m = map[status]
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-0.5 text-[11px] font-semibold ${m.cls}`}
-    >
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      {m.label}
-    </span>
+    <NFCScanExperience
+      total={total}
+      onConfirm={handleConfirm}
+      onCancel={onCancel}
+    />
   )
 }
