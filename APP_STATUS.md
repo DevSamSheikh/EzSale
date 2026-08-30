@@ -16,7 +16,7 @@
 | Dashboard | `/app/dashboard` | Home overview, KPIs, recent activity | 🟢 Complete | 🟢 Complete | 🟢 Complete | KpiGrid, SalesChart, LocationsBreakdown | Dashboard, Locations | None | Drill-through from any KPI tile |
 | POS | `/app/pos` | Point of sale — products + cart | 🟢 Complete | 🟢 Complete | 🟢 Complete | ProductCard, CartPanel, POSNavbar | POS, Multi-location | None | Quick reorder, save-as-quotation |
 | POS Payment | `/app/pos/payment` | Choose method & finalize sale | 🟢 Complete | 🟢 Complete | 🟢 Complete | MemberPicker, CardPanel, **NFCScanExperience** | POS, Payments, Cards, Locations | None | Split-tender, partial deposits |
-| POS Receipt | `/app/pos/receipt/:txnId` | Digital receipt with print/share | 🟢 Complete | 🟢 Complete | 🟢 Complete | ThermalReceipt | POS, Receipts, Locations | None | Email/SMS receipt delivery |
+| POS Receipt | `/app/pos/receipt/:txnId` | Digital receipt with print/share | 🟢 Complete | 🟢 Complete | 🟢 Complete | ReceiptDocument, **ReceiptPreviewModal** | POS, Receipts, Locations | None | Email/SMS receipt delivery |
 | Products | `/app/products` | Catalog management | 🟢 Complete | 🟢 Complete | 🟢 Complete | ProductCard, Editor drawer | Products, Categories, Inventory | None | Bulk import (CSV) |
 | Categories | `/app/categories` | Category configuration | 🟢 Complete | 🟢 Complete | 🟢 Complete | CategoryCard, Editor | Categories, Products | None | Reorder via drag-and-drop |
 | Orders | `/app/orders` | Sales history with detail drawer | 🟢 Complete | 🟢 Complete | 🟢 Complete | OrdersTable, OrderDetailsDrawer | Orders, Refunds, Locations, Cards | None | Bulk export with all columns |
@@ -48,7 +48,7 @@
 | POS catalog browsing | 🟢 Complete | Filter by category, search, favorites, variants |
 | Cart | 🟢 Complete | Quantity stepper, duplicate-line toggle, promo codes |
 | Checkout | 🟢 Complete | All 5 payment methods supported (cash, card, bank, wallet, membership) |
-| Receipts | 🟢 Complete | Print, save, share, thermal layout |
+| Receipts | 🟢 Complete | Print (thermal + A4 / US-letter), save as .txt or .html, share, email via mailto:. Receipt content: business name / address / tax id, location + terminal, order id, date/time, cashier, customer, membership card (status / tier / number), per-line items + qty + price, subtotal, discount, tax (with inclusive/exclusive label), total, cash change / card reference, and the post-charge card balance for membership payments. Thermal layout honours `@page { size: 80mm }`; standard layout honours A4. |
 | Products / Catalog | 🟢 Complete | CRUD, status, variants, images, badges, discounts |
 | Categories | 🟢 Complete | Per-business-type presets, custom categories |
 | Inventory | 🟡 In Progress | Stock + low-stock threshold present; no reorder / purchase-order flow yet |
@@ -108,6 +108,8 @@
 | **LocationContext chip** *(new)* | Topbar pill that links to /app/locations | 🟢 Complete | |
 | **Active-location hook** *(new)* | `useActiveLocation()` + `getActiveLocationIdSync()` | 🟢 Complete | Persists choice to localStorage |
 | **NFCScanExperience** *(new)* | POS membership-card scan flow with state machine (idle/scan/loading/success/error) and manual-entry fallback | 🟢 Complete | Replaces the prior text-based Membership panel on `/app/pos/payment` |
+| **ReceiptDocument** *(new)* | Renders a thermal (80 mm) or standard (A4 / US-letter) receipt for any transaction. Pure presentation — pulled in by `POSReceiptPage` and `ReceiptPreviewModal`. | 🟢 Complete | |
+| **ReceiptPreviewModal** *(new)* | Full-screen modal: thermal / standard layout toggle, zoom, Print, Download (.txt / .html), Email (mailto:), Copy text, New order, ESC + Ctrl/Cmd+P shortcuts. ESC closes. | 🟢 Complete | |
 
 ---
 
@@ -126,6 +128,7 @@
 | Change active location from POS | 🟢 Complete | POSNavbar chip or topbar chip |
 | Complete checkout with membership card | 🟢 Complete | Picks member, charges card, decrements balance |
 | **NFC scan experience at POS** *(new)* | 🟢 Complete | Tap card → animated read state → member/tier/balance preview → two-step charge confirmation. Error states for blocked/expired/inactive/lost/replaced/unassigned/insufficient/unknown. Manual entry fallback (card number, NFC UID, or by member). |
+| **Receipt & printing at POS** *(new)* | 🟢 Complete | Successful payment → `/app/pos/receipt/:id`. Receipt renders inline; `ReceiptPreviewModal` opens for the full preview with thermal/standard toggle, print, download (.txt / .html), email (mailto:), copy text, and "New order". Receipt content includes business, location, terminal, cashier, customer, membership card (status / tier / balance), line items, subtotal, discount, tax, total, change / reference, and the post-charge card balance for membership payments. |
 | Process a refund | 🟢 Complete | Full or partial; reverses card balance optionally |
 | Issue a membership card | 🟢 Complete | Create, link member, set tier, set limits |
 | Top up a card | 🟢 Complete | Direct deposit or via deposit request |
@@ -264,6 +267,21 @@
 ## 8. Change Log
 
 > Most recent first.
+
+### 2026-08-31 — Receipts & Printing
+
+- **New component** — `src/components/ReceiptDocument.tsx` is a reusable, presentation-only renderer for any `Transaction`. Two layouts: `thermal` (80 mm, dashed rules, double-line total, deterministic barcode) and `standard` (A4 / US-letter with bordered fields, full table, balance card / cash-change / reference cards). Honours `business.tax` (inclusive label + tax id), `business.receipt` (header / footer / return-policy), and the location / terminal / member / card context.
+- **Text + HTML serialisers** — `receiptToText(ctx)` and `receiptToHtml(ctx)` share the same data model, so the .txt download, the .html download, the `mailto:` body, and the clipboard text are all generated from one source of truth.
+- **New component** — `src/components/ReceiptPreviewModal.tsx` is a full-screen modal that:
+  - Lets the operator toggle **Thermal / Standard** layout.
+  - Adds a **Zoom** control for on-counter readability.
+  - Exposes **Print**, **Download** (.txt or .html, via a format pill), **Email** (`mailto:` to the member's email when available, with a graceful "Copy text" fallback otherwise), and **New order** / **Close** actions.
+  - Listens for `Esc` to close and `Cmd/Ctrl + P` to print.
+  - Injects per-layout `@page` rules so the print stylesheet targets the right paper size.
+- **POS receipt page** — `src/pages\app\POSReceiptPage.tsx` was rewritten to use the new components. Inline receipt is always visible; the modal gives the full preview. The 5 quick actions are: Print · Preview · Save (text) · Email (mailto, disabled when no customer email) · Share (Web Share API or clipboard), with a full-width **New order** primary button below. The deep-link from `OrderDetailsDrawer` (`/app/pos/receipt/:id`) continues to work.
+- **Coverage** — Cash (tendered / change), Card / Bank / Wallet (reference), Membership (card number, tier, status pill, balance before + after). Tax row uses the business tax config and flips its label between "Tax" and "Tax (incl.)" depending on `tax.inclusive`.
+- **Build status** — `tsc -b && vite build` succeeds; no type errors.
+- Status: 🟢 Complete.
 
 ### 2026-08-31 — Hotfix: NFC checkout confirm button
 
