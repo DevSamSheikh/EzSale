@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Business, BusinessType } from './types'
+import type { Business, BusinessType, POSSettings, ReceiptSettings, TaxSettings, CurrencyDisplay, NotificationSettings, MembershipCardSettings, NFCSettings, SecuritySettings, BusinessLocationSettings } from './types'
 
 const KEY = 'ezsale:business'
 const KEY_AUTH = 'ezsale:auth'
@@ -51,7 +51,7 @@ export function getBusiness(): Business | null {
   try {
     const parsed = JSON.parse(raw) as Partial<Business>
     const t = TERMINOLOGY_BY_TYPE[parsed.type ?? 'restaurant']
-    return {
+    const base = {
       id: parsed.id ?? 'preview',
       name: parsed.name ?? 'Bistro Aurora',
       type: parsed.type ?? 'restaurant',
@@ -65,12 +65,14 @@ export function getBusiness(): Business | null {
       contactEmail: parsed.contactEmail ?? '',
       contactPhone: parsed.contactPhone ?? '',
       address: parsed.address ?? '',
+      website: parsed.website ?? '',
       posMode: parsed.posMode ?? 'standard',
       categories: parsed.categories ?? [],
       paymentMethods: parsed.paymentMethods ?? [],
       membership: parsed.membership ?? { enabled: false, tiers: [] },
       terminology: parsed.terminology ?? t,
     }
+    return withDefaults(base)
   } catch {
     return null
   }
@@ -78,6 +80,133 @@ export function getBusiness(): Business | null {
 
 export function saveBusiness(b: Business) {
   localStorage.setItem(KEY, JSON.stringify(b))
+}
+
+// ---- Defaults for new settings sections ----------------------------------
+
+export const DEFAULT_POS_SETTINGS: POSSettings = {
+  showQuantityStepper: true,
+  productSort: 'popularity',
+  defaultCategoryFilter: 'all',
+  showFavorites: true,
+  allowDuplicateLines: false,
+  autoClearCart: true,
+  requireCustomer: false,
+  defaultTipPercent: 0,
+  showRunningSubtotal: true,
+  alwaysShowChangeDue: false,
+  roundCashToNickel: false,
+}
+
+export const DEFAULT_RECEIPT_SETTINGS: ReceiptSettings = {
+  showLogo: true,
+  showAddress: true,
+  showEmail: true,
+  showPhone: true,
+  showCashier: true,
+  showCustomer: true,
+  showBarcode: true,
+  autoPrint: false,
+  autoOpenPreview: true,
+  copies: 1,
+  footer: '',
+  showReturnPolicy: false,
+}
+
+export const DEFAULT_TAX_SETTINGS: TaxSettings = {
+  inclusive: false,
+  rate: 0,
+  categoryRates: [],
+  showOnReceipt: true,
+  taxId: '',
+}
+
+export const DEFAULT_CURRENCY_DISPLAY: CurrencyDisplay = {
+  code: 'USD',
+  symbol: '$',
+  decimal: '.',
+  thousands: ',',
+  decimals: 2,
+  position: 'before',
+}
+
+export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  lowBalanceThreshold: 10,
+  emailNewOrder: true,
+  emailRefund: true,
+  emailLowStock: true,
+  emailLowBalance: true,
+  dailyDigest: false,
+  pushCritical: true,
+}
+
+export const DEFAULT_MEMBERSHIP_CARD_SETTINGS: MembershipCardSettings = {
+  cardLabel: 'Loyalty Card',
+  defaultStartingBalance: 0,
+  defaultStatus: 'active',
+  defaultDailyLimit: 250,
+  defaultMonthlyLimit: 5000,
+  validityMonths: 24,
+  lowBalanceWarning: 10,
+  blockOnLost: true,
+  allowOverdraft: false,
+  requireApprovalForRefund: true,
+}
+
+export const DEFAULT_NFC_SETTINGS: NFCSettings = {
+  enabled: true,
+  readerProtocol: 'generic',
+  tapSound: true,
+  autoFillMember: true,
+  autoChargeOnSale: false,
+  uidPrefix: '',
+  note: 'Card reader keys and API credentials are managed outside this dashboard.',
+}
+
+export const DEFAULT_SECURITY_SETTINGS: SecuritySettings = {
+  requirePinForRefund: false,
+  requirePinForManager: false,
+  autoLockMinutes: 15,
+  twoFactorAdmin: false,
+  sessionHours: 8,
+  forceHttps: true,
+  ipAllowList: '',
+}
+
+export const DEFAULT_LOCATION_SETTINGS: BusinessLocationSettings = {
+  multiLocation: true,
+  defaultLocationId: 'loc-main',
+  tagTransactionsWithTerminal: true,
+}
+
+/** Ensure all nested settings objects are populated with defaults. */
+export function withDefaults(b: Partial<Business> & Pick<Business, 'id' | 'name' | 'type' | 'currency' | 'timezone' | 'taxRate' | 'taxInclusive' | 'receiptHeader' | 'receiptFooter' | 'contactEmail' | 'contactPhone' | 'posMode' | 'categories' | 'paymentMethods' | 'membership' | 'terminology'>): Business {
+  const merged: Business = {
+    ...(b as Business),
+    pos: { ...DEFAULT_POS_SETTINGS, ...(b.pos ?? {}) },
+    receipt: { ...DEFAULT_RECEIPT_SETTINGS, ...(b.receipt ?? {}) },
+    tax: {
+      inclusive: b.tax?.inclusive ?? b.taxInclusive ?? false,
+      rate: b.tax?.rate ?? b.taxRate ?? 0,
+      categoryRates: b.tax?.categoryRates ?? [],
+      showOnReceipt: b.tax?.showOnReceipt ?? true,
+      taxId: b.tax?.taxId ?? '',
+    },
+    currencyDisplay: {
+      code: b.currencyDisplay?.code ?? b.currency ?? 'USD',
+      symbol: b.currencyDisplay?.symbol ?? '$',
+      decimal: b.currencyDisplay?.decimal ?? '.',
+      thousands: b.currencyDisplay?.thousands ?? ',',
+      decimals: b.currencyDisplay?.decimals ?? 2,
+      position: b.currencyDisplay?.position ?? 'before',
+    },
+    notifications: { ...DEFAULT_NOTIFICATION_SETTINGS, ...(b.notifications ?? {}) },
+    membershipCards: { ...DEFAULT_MEMBERSHIP_CARD_SETTINGS, ...(b.membershipCards ?? {}) },
+    nfc: { ...DEFAULT_NFC_SETTINGS, ...(b.nfc ?? {}) },
+    security: { ...DEFAULT_SECURITY_SETTINGS, ...(b.security ?? {}) },
+    locations: { ...DEFAULT_LOCATION_SETTINGS, ...(b.locations ?? {}) },
+  }
+  return merged
 }
 
 export function getAuth(): { email: string } | null {
