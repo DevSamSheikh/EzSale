@@ -17,6 +17,8 @@ export const NAV_LINKS = [
   { to: '/app/transactions', label: 'Transactions', icon: 'ArrowLeftRight' },
   { to: '/app/reports', label: 'Reports', icon: 'FileText' },
   { to: '/app/analytics', label: 'Analytics', icon: 'TrendingUp' },
+  { to: '/app/staff', label: 'Staff', icon: 'UserCog' },
+  { to: '/app/roles', label: 'Roles', icon: 'ShieldCheck' },
   { to: '/app/settings', label: 'Settings', icon: 'Settings' },
 ] as const
 

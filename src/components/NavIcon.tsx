@@ -12,6 +12,8 @@ import {
   FileText,
   TrendingUp,
   Settings,
+  UserCog,
+  ShieldCheck,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -29,6 +31,8 @@ const ICONS: Record<string, LucideIcon> = {
   FileText,
   TrendingUp,
   Settings,
+  UserCog,
+  ShieldCheck,
 }
 
 export function NavIcon({ name, className = 'w-5 h-5 nav-icon' }: { name: string; className?: string }) {

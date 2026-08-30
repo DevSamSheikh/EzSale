@@ -25,6 +25,7 @@ import {
   isCardUsable,
   paymentMethodLabel,
 } from '../../payment-store'
+import { getDefaultLocationId } from '../../orders-store'
 import { clearCart, getCart, getProducts } from '../../pos-store'
 import { getAuth, getBusiness } from '../../store'
 import type {
@@ -172,14 +173,17 @@ export default function POSPaymentPage() {
       price: l.price,
       qty: l.qty,
     }))
+    const tax = business?.taxRate ? Math.round(((subtotal - discount) * business.taxRate) / 100) : 0
     const created = createTransaction({
       businessId: business?.id ?? 'preview',
       operatorEmail: auth?.email ?? 'demo@ezsale.app',
       items,
       subtotal,
       discount,
+      tax,
       total,
       method,
+      locationId: getDefaultLocationId(),
       status: 'completed',
       ...extra,
     })

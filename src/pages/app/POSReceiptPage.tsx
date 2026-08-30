@@ -154,6 +154,7 @@ export default function POSReceiptPage() {
             <Row label="Items" value={`${itemsCount}`} />
             <Row label="Subtotal" value={currency(txn.subtotal)} />
             {txn.discount > 0 && <Row label="Discount" value={`-${currency(txn.discount)}`} />}
+            {txn.tax > 0 && <Row label="Tax" value={currency(txn.tax)} />}
             <div className="pt-1">
               <Row label="TOTAL" value={currency(txn.total)} bold />
             </div>

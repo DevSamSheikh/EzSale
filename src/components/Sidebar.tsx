@@ -3,9 +3,21 @@ import { ChevronLeft, HelpCircle, X } from 'lucide-react'
 import { Logo } from './Primitives'
 import { NavIcon } from './NavIcon'
 import { NAV_LINKS, memberTermPlural } from '../store'
+import {
+  getCurrentOperator,
+  operatorHas,
+} from '../operators-store'
+import { PERMISSION_TO_NAV } from '../permissions'
 
 const SIDEBAR_FULL = 'w-64'
 const SIDEBAR_COLLAPSED = 'w-[68px]'
+
+function linkAllowed(to: string, op: ReturnType<typeof getCurrentOperator>): boolean {
+  // Find the permission key that guards this route. If none, allow.
+  const key = Object.entries(PERMISSION_TO_NAV).find(([, path]) => path === to)?.[0]
+  if (!key) return true
+  return operatorHas(op, key as never)
+}
 
 export function Sidebar({
   onNavigate,
@@ -17,7 +29,11 @@ export function Sidebar({
   onToggleCollapsed?: () => void
 }) {
   const term = memberTermPlural()
+  const me = getCurrentOperator()
   const w = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_FULL
+  const links = NAV_LINKS.filter((l) => l.to !== '/app/pos').filter((l) =>
+    linkAllowed(l.to, me),
+  )
   return (
     <aside
       className={`hidden h-full shrink-0 flex-col border-r border-ink-100 bg-white transition-[width] duration-200 lg:flex ${w}`}
@@ -50,7 +66,7 @@ export function Sidebar({
           collapsed ? 'px-2' : 'px-3'
         }`}
       >
-        {NAV_LINKS.filter((l) => l.to !== '/app/pos').map((l) => (
+        {links.map((l) => (
           <NavLink
             key={l.to}
             to={l.to}
@@ -98,6 +114,7 @@ export function MobileSidebar({
 }) {
   const location = useLocation()
   const term = memberTermPlural()
+  const me = getCurrentOperator()
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
@@ -114,20 +131,22 @@ export function MobileSidebar({
           </button>
         </div>
         <nav className="space-y-1 px-3 py-2">
-          {NAV_LINKS.filter((l) => l.to !== '/app/pos').map((l) => {
-            const active = location.pathname.startsWith(l.to)
-            return (
-              <NavLink
-                key={l.to}
-                to={l.to}
-                onClick={onClose}
-                className={active ? 'nav-item-active' : 'nav-item'}
-              >
-                <NavIcon name={l.icon} />
-                <span>{l.to === '/app/users' ? term : l.label}</span>
-              </NavLink>
-            )
-          })}
+          {NAV_LINKS.filter((l) => l.to !== '/app/pos')
+            .filter((l) => linkAllowed(l.to, me))
+            .map((l) => {
+              const active = location.pathname.startsWith(l.to)
+              return (
+                <NavLink
+                  key={l.to}
+                  to={l.to}
+                  onClick={onClose}
+                  className={active ? 'nav-item-active' : 'nav-item'}
+                >
+                  <NavIcon name={l.icon} />
+                  <span>{l.to === '/app/users' ? term : l.label}</span>
+                </NavLink>
+              )
+            })}
         </nav>
       </div>
     </div>

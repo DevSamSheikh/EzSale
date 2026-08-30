@@ -11,6 +11,7 @@ import {
   Plus,
   Search,
   Settings as Cog,
+  Shield,
   User,
 } from 'lucide-react'
 import { Logo } from './Primitives'
@@ -18,6 +19,12 @@ import { NavIcon } from './NavIcon'
 import { BusinessTypeIcon } from '../icons'
 import { GlobalSearchMenu } from './GlobalSearchMenu'
 import { BUSINESS_TYPES, getBusiness, getAuth, clearAuth, NAV_LINKS } from '../store'
+import {
+  getCurrentOperator,
+  getOperators,
+  getRoles,
+  setCurrentOperatorId,
+} from '../operators-store'
 
 const DEMO_BUSINESSES = [
   { id: 'b1', name: 'Bistro Aurora', type: 'restaurant' as const },
@@ -46,12 +53,15 @@ export function Topbar({
   const bizRef = useRef<HTMLDivElement | null>(null)
   const notifRef = useRef<HTMLDivElement | null>(null)
   const userRef = useRef<HTMLDivElement | null>(null)
+  const operatorRef = useRef<HTMLDivElement | null>(null)
+  const [operatorOpen, setOperatorOpen] = useState(false)
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
       if (bizRef.current && !bizRef.current.contains(e.target as Node)) setBizOpen(false)
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false)
       if (userRef.current && !userRef.current.contains(e.target as Node)) setUserOpen(false)
+      if (operatorRef.current && !operatorRef.current.contains(e.target as Node)) setOperatorOpen(false)
     }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
@@ -190,6 +200,64 @@ export function Topbar({
       />
 
       <div className="ml-auto flex items-center gap-1 md:ml-2">
+        {/* Operator switcher (demo) */}
+        <div ref={operatorRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setOperatorOpen((o) => !o)}
+            className="hidden items-center gap-2 rounded-xl border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-700 hover:bg-ink-50 sm:inline-flex"
+            title="Switch operator (demo)"
+          >
+            <Shield className="h-3.5 w-3.5 text-ink-500" />
+            <span className="truncate max-w-[160px]">
+              {getCurrentOperator()?.name ?? auth?.email?.split('@')[0] ?? 'demo'}
+            </span>
+            <ChevronDown className="h-3.5 w-3.5 text-ink-500" />
+          </button>
+          {operatorOpen && (
+            <div className="absolute right-0 top-full z-40 mt-2 w-72 overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-pop">
+              <div className="border-b border-ink-100 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-ink-500">
+                Switch operator (demo)
+              </div>
+              <ul className="max-h-72 overflow-y-auto py-1">
+                {getOperators().map((op) => {
+                  const role = getRoles().find((r) => r.id === op.roleId)
+                  const active = op.id === getCurrentOperator()?.id
+                  return (
+                    <li key={op.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCurrentOperatorId(op.id)
+                          setOperatorOpen(false)
+                          // Soft refresh so guards re-evaluate
+                          window.location.reload()
+                        }}
+                        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-ink-50 ${
+                          active ? 'bg-brand-50' : ''
+                        }`}
+                      >
+                        <span
+                          className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[10px] font-extrabold text-ink-900"
+                          style={{ background: op.avatarColor ?? '#84eb0a' }}
+                        >
+                          {op.name.charAt(0).toUpperCase()}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-ink-900">{op.name}</span>
+                          <span className="block truncate text-[10px] text-ink-500">
+                            {role?.name ?? op.roleId}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+        </div>
+
         {/* Quick add */}
         <button
           onClick={() => navigate('/app/pos')}
@@ -236,14 +304,19 @@ export function Topbar({
             onClick={() => setUserOpen((o) => !o)}
             className="flex items-center gap-2 rounded-xl p-1.5 pr-2 hover:bg-ink-100"
           >
-            <div className="grid h-8 w-8 place-items-center rounded-full bg-ink-900 text-xs font-bold text-white">
-              {(auth?.email?.[0] ?? 'D').toUpperCase()}
+            <div
+              className="grid h-8 w-8 place-items-center rounded-full text-xs font-bold text-ink-900"
+              style={{ background: getCurrentOperator()?.avatarColor ?? '#84eb0a' }}
+            >
+              {(getCurrentOperator()?.name?.[0] ?? auth?.email?.[0] ?? 'D').toUpperCase()}
             </div>
             <div className="hidden text-left sm:block">
               <div className="text-sm font-semibold text-ink-900">
-                {auth?.email?.split('@')[0] ?? 'demo'}
+                {getCurrentOperator()?.name ?? auth?.email?.split('@')[0] ?? 'demo'}
               </div>
-              <div className="text-[11px] text-ink-500">Owner</div>
+              <div className="text-[11px] text-ink-500">
+                {getRoles().find((r) => r.id === getCurrentOperator()?.roleId)?.name ?? 'Operator'}
+              </div>
             </div>
             <ChevronDown className="hidden h-4 w-4 text-ink-500 sm:block" />
           </button>
@@ -252,9 +325,9 @@ export function Topbar({
               <div className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-ink-400">
                 Account
               </div>
-              <button className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-sm hover:bg-ink-50">
-                <User className="h-4 w-4 text-ink-500" /> Profile
-              </button>
+              <Link to="/app/staff" className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-sm hover:bg-ink-50">
+                <User className="h-4 w-4 text-ink-500" /> My profile
+              </Link>
               <Link to="/app/settings" className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-sm hover:bg-ink-50">
                 <Cog className="h-4 w-4 text-ink-500" /> Settings
               </Link>

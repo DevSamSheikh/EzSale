@@ -25,7 +25,14 @@ import AnalyticsPage from './pages/app/AnalyticsPage'
 import SettingsPage from './pages/app/SettingsPage'
 import PortalLandingPage from './pages/portal/PortalLandingPage'
 import PortalDashboardPage from './pages/portal/PortalDashboardPage'
+import OperatorsPage from './pages/app/OperatorsPage'
+import OperatorDetailsPage from './pages/app/OperatorDetailsPage'
+import RolesPage from './pages/app/RolesPage'
 import { getAuth, getBusiness } from './store'
+import { warmStores } from './seed-orders'
+import { RequirePermission } from './components/RequirePermission'
+
+warmStores()
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const auth = getAuth()
@@ -103,6 +110,30 @@ export default function App() {
           <Route path="transactions" element={<TransactionsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
+          <Route
+            path="staff"
+            element={
+              <RequirePermission anyOf={['staff.view']}>
+                <OperatorsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="staff/:operatorId"
+            element={
+              <RequirePermission anyOf={['staff.view']}>
+                <OperatorDetailsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="roles"
+            element={
+              <RequirePermission anyOf={['roles.view']}>
+                <RolesPage />
+              </RequirePermission>
+            }
+          />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
         <Route path="/u/identify" element={<PortalLandingPage />} />
