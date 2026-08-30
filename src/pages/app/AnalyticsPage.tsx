@@ -30,6 +30,7 @@ import {
 } from '../../card-store'
 import { getTransactions, paymentMethodLabel } from '../../payment-store'
 import { getBusiness } from '../../store'
+import { getLocations } from '../../orders-store'
 import type { PaymentMethod, Transaction } from '../../types'
 import { playCue } from '../../audio'
 
@@ -49,6 +50,7 @@ interface FilterState {
   end: number
   /** label describing the current period (used in subtitles) */
   label: string
+  /** 'all' or a location id */
   location: string
   category: string
   method: 'all' | PaymentMethod
@@ -627,8 +629,8 @@ function SelectChip({
 function LocationChip({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const business = getBusiness()
   const [open, setOpen] = useState(false)
-  // Single-tenant in this build; dropdown is in place for multi-location.
-  const list = business ? [{ id: 'all', name: 'All locations' }, { id: business.id, name: business.name }] : []
+  const locations = getLocations()
+  const list = [{ id: 'all', name: 'All locations' }, ...locations.map((l) => ({ id: l.id, name: l.name }))]
   const current = list.find((b) => b.id === value) ?? list[0]
   if (list.length <= 2) {
     return (
@@ -656,8 +658,11 @@ function LocationChip({ value, onChange }: { value: string; onChange: (v: string
               onClick={() => {
                 onChange(b.id)
                 setOpen(false)
+                playCue('tap')
               }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-ink-50"
+              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-ink-50 ${
+                b.id === value ? 'bg-brand-50' : ''
+              }`}
             >
               <Store className="h-3.5 w-3.5 text-ink-500" />
               <span className="truncate">{b.name}</span>
@@ -1572,6 +1577,7 @@ function matchesFilter(
   if (x < filter.start || x >= filter.end) return false
   if (filter.method !== 'all' && t.method !== filter.method) return false
   if (filter.operator !== 'all' && t.operatorEmail !== filter.operator) return false
+  if (filter.location !== 'all' && t.locationId !== filter.location) return false
   if (filter.category !== 'all') {
     // Transactions store productId but not category on each line; resolve the
     // category from the catalog (same lookup used in computeTotals).

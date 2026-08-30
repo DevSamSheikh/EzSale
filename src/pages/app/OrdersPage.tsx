@@ -6,6 +6,7 @@ import {
   CreditCard,
   Download,
   Filter,
+  MapPin,
   Receipt,
   RotateCcw,
   ShoppingBag,
@@ -278,6 +279,13 @@ export default function OrdersPage() {
             selected={filters.memberIds}
             onChange={(v) => setFilters((f) => ({ ...f, memberIds: v }))}
           />
+          <FilterSelect
+            label="Location"
+            icon={<MapPin className="h-3.5 w-3.5" />}
+            options={locationOptions}
+            selected={filters.locationIds}
+            onChange={(v) => setFilters((f) => ({ ...f, locationIds: v }))}
+          />
           {hasFilters && (
             <button
               type="button"
@@ -294,6 +302,7 @@ export default function OrdersPage() {
         transactions={filtered}
         members={data.members}
         cards={data.cards}
+        locations={data.locations}
         onSelect={(t) => {
           setSelectedTxn(t)
           playCue('tap')
@@ -323,6 +332,7 @@ function OrdersTable({
   transactions,
   members,
   cards,
+  locations,
   onSelect,
   page,
   pageSize,
@@ -331,6 +341,7 @@ function OrdersTable({
   transactions: Transaction[]
   members: Member[]
   cards: MembershipCard[]
+  locations: Location[]
   onSelect: (t: Transaction) => void
   page: number
   pageSize: number
@@ -357,9 +368,10 @@ function OrdersTable({
             <col className="w-[150px]" />
             <col />
             <col className="w-[170px]" />
+            <col className="w-[140px]" />
             <col className="w-[68px]" />
             <col className="w-[110px]" />
-            <col className="w-[150px]" />
+            <col className="w-[140px]" />
             <col className="w-[160px]" />
             <col className="w-[110px]" />
           </colgroup>
@@ -368,6 +380,7 @@ function OrdersTable({
               <th className="px-4 py-3">Order</th>
               <th className="px-4 py-3">Customer</th>
               <th className="px-4 py-3">Operator</th>
+              <th className="px-4 py-3">Location</th>
               <th className="px-4 py-3 text-center">Items</th>
               <th className="px-4 py-3 text-right">Total</th>
               <th className="px-4 py-3">Payment</th>
@@ -379,6 +392,7 @@ function OrdersTable({
             {visible.map((t) => {
               const member = members.find((m) => m.id === t.memberId) ?? null
               const card = cards.find((c) => c.id === t.cardId) ?? null
+              const location = locations.find((l) => l.id === t.locationId) ?? null
               const count = orderItemsCount(t)
               return (
                 <tr
@@ -426,6 +440,22 @@ function OrdersTable({
                     <div className="truncate text-[11px] text-ink-500">
                       {t.operatorEmail}
                     </div>
+                  </td>
+                  <td className="px-4 py-3.5 align-top">
+                    {location ? (
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold leading-tight text-ink-900">
+                          {location.name}
+                        </div>
+                        <div className="truncate text-[11px] text-ink-500">
+                          <span className="font-mono">{location.code}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-ink-500">
+                        <MapPin className="h-3 w-3" /> Unknown
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3.5 align-top text-center">
                     <Tooltip

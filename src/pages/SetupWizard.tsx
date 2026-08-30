@@ -266,7 +266,7 @@ export default function SetupWizard() {
         forceHttps: true,
         ipAllowList: '',
       },
-      locations: { multiLocation: true, defaultLocationId: 'loc-main', tagTransactionsWithTerminal: true },
+      locations: { multiLocation: true, defaultLocationId: 'loc-main', tagTransactionsWithTerminal: true, cardsUsableAcrossLocations: true, requireLocationSelectionAtPOS: false },
     }
     saveBusiness(business)
     localStorage.setItem('ezsale:onboarded', '1')

@@ -494,7 +494,7 @@ export function operatorPermissions(op: Operator): PermissionKey[] {
   if (op.locationIds.length > 0 && role.id !== 'role-super-admin') {
     // Restrict "POS use" if the operator is not assigned to any active location
     const anyActive = op.locationIds.some((id) =>
-      getLocations().find((l) => l.id === id && l.active),
+      getLocations().find((l) => l.id === id && l.status === 'active'),
     )
     if (!anyActive) {
       return role.permissions.filter((k) => k !== 'pos.use' && k !== 'pos.refund')

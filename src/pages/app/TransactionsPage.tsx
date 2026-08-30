@@ -8,6 +8,7 @@ import {
   CreditCard,
   Download,
   Filter,
+  MapPin,
   RotateCcw,
   User as UserIcon,
   Wallet,
@@ -299,6 +300,13 @@ export default function TransactionsPage() {
             selected={filters.cardIds ?? []}
             onChange={(v) => setFilters((f) => ({ ...f, cardIds: v }))}
           />
+          <FilterSelect
+            label="Location"
+            icon={<MapPin className="h-3.5 w-3.5" />}
+            options={locationOptions}
+            selected={filters.locationIds}
+            onChange={(v) => setFilters((f) => ({ ...f, locationIds: v }))}
+          />
           {hasFilters && (
             <button
               type="button"
@@ -315,6 +323,7 @@ export default function TransactionsPage() {
         transactions={filtered}
         members={data.members}
         cards={data.cards}
+        locations={data.locations}
         onSelect={(t) => {
           setSelectedTxn(t)
           playCue('tap')
@@ -345,6 +354,7 @@ function TransactionsTable({
   transactions,
   members,
   cards,
+  locations,
   onSelect,
   page,
   pageSize,
@@ -353,6 +363,7 @@ function TransactionsTable({
   transactions: Transaction[]
   members: Member[]
   cards: MembershipCard[]
+  locations: Location[]
   onSelect: (t: Transaction) => void
   page: number
   pageSize: number
@@ -396,7 +407,7 @@ function TransactionsTable({
               <th className="px-4 py-3 text-right">Amount</th>
               <th className="px-4 py-3 text-right">Before</th>
               <th className="px-4 py-3 text-right">After</th>
-              <th className="px-4 py-3">Payment</th>
+              <th className="px-4 py-3">Location</th>
               <th className="px-4 py-3">Operator</th>
               <th className="px-4 py-3">Date</th>
             </tr>
@@ -405,6 +416,7 @@ function TransactionsTable({
             {visible.map((t) => {
               const member = members.find((m) => m.id === t.memberId) ?? null
               const card = cards.find((c) => c.id === t.cardId) ?? null
+              const location = locations.find((l) => l.id === t.locationId) ?? null
               const events = getFinancialEvents(t.id)
               // The most recent event for this transaction that touched the card
               // gives us a balance before/after snapshot (for the table view).
@@ -505,14 +517,20 @@ function TransactionsTable({
                       : '—'}
                   </td>
                   <td className="px-4 py-3.5 align-top">
-                    <span
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${methodPillClass(
-                        t.method as PaymentMethod,
-                      )}`}
-                    >
-                      {methodIcon(t.method)}
-                      {methodLabel(t.method)}
-                    </span>
+                    {location ? (
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold leading-tight text-ink-900">
+                          {location.name}
+                        </div>
+                        <div className="truncate font-mono text-[10px] text-ink-500">
+                          {location.code}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-ink-500">
+                        <MapPin className="h-3 w-3" /> —
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3.5 align-top">
                     <div className="truncate text-sm font-semibold leading-tight text-ink-900">

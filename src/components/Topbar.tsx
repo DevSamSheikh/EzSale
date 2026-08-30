@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import {
   Bell,
+  Building2,
   ChevronDown,
   ChevronRight,
   LogOut,
+  MapPin,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
@@ -25,6 +27,9 @@ import {
   getRoles,
   setCurrentOperatorId,
 } from '../operators-store'
+import { getLocations } from '../orders-store'
+import { useActiveLocation } from '../active-location'
+import { isLocationOpenNow } from '../location-utils'
 
 const DEMO_BUSINESSES = [
   { id: 'b1', name: 'Bistro Aurora', type: 'restaurant' as const },
@@ -49,12 +54,16 @@ export function Topbar({
   const [userOpen, setUserOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [locOpen, setLocOpen] = useState(false)
 
   const bizRef = useRef<HTMLDivElement | null>(null)
   const notifRef = useRef<HTMLDivElement | null>(null)
   const userRef = useRef<HTMLDivElement | null>(null)
   const operatorRef = useRef<HTMLDivElement | null>(null)
+  const locRef = useRef<HTMLDivElement | null>(null)
   const [operatorOpen, setOperatorOpen] = useState(false)
+
+  const activeLocation = useActiveLocation()
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -62,6 +71,7 @@ export function Topbar({
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false)
       if (userRef.current && !userRef.current.contains(e.target as Node)) setUserOpen(false)
       if (operatorRef.current && !operatorRef.current.contains(e.target as Node)) setOperatorOpen(false)
+      if (locRef.current && !locRef.current.contains(e.target as Node)) setLocOpen(false)
     }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
@@ -123,7 +133,7 @@ export function Topbar({
       </div>
 
       {/* Business selector */}
-      <div ref={bizRef} className="relative">
+      <div ref={bizRef} className="relative hidden sm:block">
         <button
           onClick={() => setBizOpen((o) => !o)}
           className="flex items-center gap-2 rounded-xl border border-ink-200 bg-white px-3 py-1.5 text-sm font-semibold text-ink-900 hover:bg-ink-50"
@@ -170,6 +180,103 @@ export function Topbar({
               <button className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-sm font-semibold text-ink-800 hover:bg-ink-50">
                 <Plus className="h-4 w-4" /> New business
               </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Location selector */}
+      <div ref={locRef} className="relative hidden md:block">
+        <button
+          type="button"
+          onClick={() => setLocOpen((o) => !o)}
+          className="flex items-center gap-2 rounded-xl border border-ink-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-ink-900 hover:bg-ink-50"
+          title="Switch active location"
+        >
+          <span className="grid h-6 w-6 place-items-center rounded-md bg-ink-900 text-brand-400">
+            <MapPin className="h-3.5 w-3.5" />
+          </span>
+          <span className="max-w-[180px] truncate">
+            {activeLocation.location?.name ?? 'Select location'}
+          </span>
+          {activeLocation.location && (
+            <span
+              className={`h-2 w-2 shrink-0 rounded-full ${
+                isLocationOpenNow(activeLocation.location)
+                  ? 'bg-emerald-500'
+                  : activeLocation.location.status === 'active'
+                  ? 'bg-amber-500'
+                  : 'bg-ink-300'
+              }`}
+              aria-hidden
+            />
+          )}
+          <ChevronDown className="h-3.5 w-3.5 text-ink-400" />
+        </button>
+        {locOpen && (
+          <div className="absolute left-0 top-full z-40 mt-2 w-72 overflow-hidden rounded-2xl border border-ink-100 bg-white p-1.5 shadow-pop">
+            <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-ink-400">
+              Active location
+            </div>
+            <ul className="max-h-72 overflow-y-auto">
+              {getLocations().map((l) => {
+                const on = l.id === activeLocation.activeId
+                const open = isLocationOpenNow(l)
+                return (
+                  <li key={l.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        activeLocation.setActiveId(l.id)
+                        setLocOpen(false)
+                      }}
+                      className={`flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm hover:bg-ink-50 ${
+                        on ? 'bg-brand-50' : ''
+                      }`}
+                    >
+                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-ink-100 text-ink-700">
+                        <MapPin className="h-3.5 w-3.5" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate font-semibold text-ink-900">
+                            {l.name}
+                          </span>
+                          {l.isPrimary && (
+                            <span className="rounded-full bg-brand-500 px-1 py-px text-[9px] font-bold text-ink-900">
+                              Primary
+                            </span>
+                          )}
+                        </span>
+                        <span className="block truncate text-[10px] text-ink-500">
+                          {l.code} ·{' '}
+                          {l.status === 'active'
+                            ? open
+                              ? 'Open'
+                              : 'Closed'
+                            : l.status === 'maintenance'
+                            ? 'Maintenance'
+                            : 'Inactive'}
+                        </span>
+                      </span>
+                      {on && (
+                        <span className="rounded-pill bg-brand-500 px-2 py-0.5 text-[10px] font-bold text-ink-900">
+                          Active
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+            <div className="mt-1 border-t border-ink-100 pt-1">
+              <Link
+                to="/app/locations"
+                onClick={() => setLocOpen(false)}
+                className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-sm font-semibold text-ink-800 hover:bg-ink-50"
+              >
+                <Building2 className="h-4 w-4" /> Manage locations
+              </Link>
             </div>
           </div>
         )}

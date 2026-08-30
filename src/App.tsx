@@ -28,6 +28,7 @@ import PortalDashboardPage from './pages/portal/PortalDashboardPage'
 import OperatorsPage from './pages/app/OperatorsPage'
 import OperatorDetailsPage from './pages/app/OperatorDetailsPage'
 import RolesPage from './pages/app/RolesPage'
+import LocationsPage from './pages/app/LocationsPage'
 import { getAuth, getBusiness } from './store'
 import { warmStores } from './seed-orders'
 import { RequirePermission } from './components/RequirePermission'
@@ -131,6 +132,14 @@ export default function App() {
             element={
               <RequirePermission anyOf={['roles.view']}>
                 <RolesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="locations"
+            element={
+              <RequirePermission anyOf={['settings.view', 'settings.manage', 'staff.view']}>
+                <LocationsPage />
               </RequirePermission>
             }
           />

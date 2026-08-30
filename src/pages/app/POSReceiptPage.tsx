@@ -5,12 +5,15 @@ import {
   CheckCircle2,
   Download,
   Mail,
+  MapPin,
   Printer,
   RotateCcw,
   Share2,
+  Store,
 } from 'lucide-react'
 import { getTransactions, paymentMethodLabel } from '../../payment-store'
 import { getBusiness } from '../../store'
+import { getLocations } from '../../orders-store'
 import type { Transaction } from '../../types'
 import { playCue } from '../../audio'
 
@@ -52,6 +55,9 @@ export default function POSReceiptPage() {
 
   const itemsCount = txn.items.reduce((s, i) => s + i.qty, 0)
   const created = new Date(txn.createdAt)
+  const locations = getLocations()
+  const loc = locations.find((l) => l.id === txn.locationId) ?? null
+  const terminal = loc?.terminals.find((t) => t.id === txn.terminalId) ?? null
 
   return (
     <div className="min-h-screen bg-ink-50 px-3 py-3 sm:px-5 sm:py-5">
@@ -69,6 +75,12 @@ export default function POSReceiptPage() {
             </div>
             <div className="text-[11px] text-ink-500">Order placed</div>
             <div className="text-lg font-extrabold text-ink-900">{currency(txn.total)}</div>
+            {loc && (
+              <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-ink-500">
+                <MapPin className="h-3 w-3" /> {loc.name}
+                {terminal ? ` · ${terminal.code}` : ''}
+              </div>
+            )}
           </div>
         </header>
 
@@ -121,6 +133,12 @@ export default function POSReceiptPage() {
             <span>Method</span>
             <span>{paymentMethodLabel(txn.method)}</span>
           </div>
+          {loc && (
+            <div className="mt-1 flex items-center justify-between text-[11px] text-ink-600">
+              <span>Location</span>
+              <span>{loc.name}{terminal ? ` · ${terminal.code}` : ''}</span>
+            </div>
+          )}
 
           <DashedRule />
 

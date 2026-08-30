@@ -10,6 +10,7 @@ import {
   CreditCard,
   Download,
   Filter,
+  MapPin,
   MonitorPlay,
   Package,
   ShoppingBag,
@@ -29,6 +30,8 @@ import {
   memberStatusLabel,
 } from '../../card-store'
 import { getTransactions, paymentMethodLabel } from '../../payment-store'
+import { getLocations } from '../../orders-store'
+import { getActiveLocationIdSync } from '../../active-location'
 import { getAuth, getBusiness } from '../../store'
 import type {
   CardDeposit,
@@ -203,6 +206,7 @@ export default function DashboardPage() {
         actions={
           <>
             <BusinessSelector />
+            <LocationContext />
             <button onClick={() => setTick((t) => t + 1)} className="btn-secondary">
               <Filter className="h-4 w-4" /> Today
             </button>
@@ -233,6 +237,10 @@ export default function DashboardPage() {
         <div className="lg:col-span-2">
           <LowBalanceCards cards={data.lowBalanceCards} />
         </div>
+      </div>
+
+      <div className="mt-6">
+        <LocationsBreakdown transactions={data.allTxns} />
       </div>
 
       <div className="mt-6">
@@ -398,8 +406,9 @@ function revenueTrend(week: number, prev: number) {
 
 function BusinessSelector() {
   const business = getBusiness()
-  // Single-tenant in this build; show as a static chip but the dropdown contract
-  // is in place so multi-location accounts can plug in without UI changes.
+  const locations = getLocations()
+  const activeId = getActiveLocationIdSync()
+  const activeLocation = locations.find((l) => l.id === activeId) ?? locations[0]
   const [open, setOpen] = useState(false)
   const list = business ? [business] : []
   if (list.length <= 1) {
@@ -435,6 +444,26 @@ function BusinessSelector() {
         </div>
       )}
     </div>
+  )
+}
+
+function LocationContext() {
+  const locations = getLocations()
+  const activeId = getActiveLocationIdSync()
+  const activeLocation = locations.find((l) => l.id === activeId)
+  if (!activeLocation) return null
+  return (
+    <Link
+      to="/app/locations"
+      className="inline-flex items-center gap-1.5 rounded-pill border border-ink-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 hover:bg-ink-50"
+      title="Active location · click to manage"
+    >
+      <MapPin className="h-3.5 w-3.5 text-ink-500" />
+      <span className="truncate max-w-[160px]">{activeLocation.name}</span>
+      <span className="rounded bg-ink-100 px-1.5 py-0.5 font-mono text-[10px] text-ink-700">
+        {activeLocation.code}
+      </span>
+    </Link>
   )
 }
 
@@ -775,6 +804,7 @@ function LowBalanceCards({ cards }: { cards: MembershipCard[] }) {
 // ---- Recent orders (compact) --------------------------------------------
 
 function RecentOrders({ transactions }: { transactions: Transaction[] }) {
+  const locations = getLocations()
   return (
     <div className="card p-5">
       <div className="flex items-center justify-between">
@@ -799,6 +829,7 @@ function RecentOrders({ transactions }: { transactions: Transaction[] }) {
         <ul className="mt-3 divide-y divide-ink-100">
           {transactions.map((t) => {
             const m = getMember(t.memberId)
+            const loc = locations.find((l) => l.id === t.locationId)
             const first = t.items[0]?.name
             const more = t.items.length > 1 ? ` +${t.items.length - 1} more` : ''
             return (
@@ -821,6 +852,14 @@ function RecentOrders({ transactions }: { transactions: Transaction[] }) {
                   <div className="text-[11px] text-ink-500">
                     {m?.name ?? 'Walk-in'} · {formatDateTime(t.createdAt)} ·{' '}
                     <span className="font-mono">{t.id}</span>
+                    {loc && (
+                      <>
+                        {' · '}
+                        <span className="inline-flex items-center gap-0.5">
+                          <MapPin className="h-3 w-3 text-ink-400" /> {loc.code}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="text-right text-sm font-extrabold text-ink-900">
@@ -835,9 +874,98 @@ function RecentOrders({ transactions }: { transactions: Transaction[] }) {
   )
 }
 
+// ---- Locations breakdown -----------------------------------------------
+
+function LocationsBreakdown({ transactions }: { transactions: Transaction[] }) {
+  const locations = getLocations()
+  const breakdown = useMemo(() => {
+    const map = new Map<string, { orders: number; revenue: number; location: typeof locations[number] | null }>()
+    let unassigned = 0
+    for (const t of transactions) {
+      const lid = t.locationId ?? ''
+      const loc = locations.find((l) => l.id === lid) ?? null
+      if (!loc) {
+        unassigned += t.total
+        continue
+      }
+      const e = map.get(lid) ?? { orders: 0, revenue: 0, location: loc }
+      e.orders += 1
+      e.revenue += t.total
+      map.set(lid, e)
+    }
+    const rows = Array.from(map.values()).sort((a, b) => b.revenue - a.revenue)
+    return { rows, unassigned }
+  }, [transactions, locations])
+
+  const total = breakdown.rows.reduce((s, r) => s + r.revenue, 0)
+
+  return (
+    <div className="card p-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-sm font-semibold text-ink-900">Sales by location</div>
+          <div className="text-xs text-ink-500">
+            Revenue breakdown across all stores, kiosks &amp; counters
+          </div>
+        </div>
+        <Link
+          to="/app/locations"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-ink-700 hover:text-ink-900"
+        >
+          Manage locations <ArrowUpRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+      {breakdown.rows.length === 0 ? (
+        <div className="mt-4 rounded-2xl border border-dashed border-ink-200 bg-ink-50/40 p-6 text-center text-xs text-ink-500">
+          No sales tagged to a location yet.
+        </div>
+      ) : (
+        <ul className="mt-3 space-y-2.5">
+          {breakdown.rows.map((row) => {
+            const pct = total > 0 ? (row.revenue / total) * 100 : 0
+            return (
+              <li key={row.location?.id} className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <MapPin className="h-3.5 w-3.5 text-ink-500" />
+                    <span className="truncate font-semibold text-ink-900">
+                      {row.location?.name ?? 'Unknown'}
+                    </span>
+                    {row.location?.isPrimary && (
+                      <span className="rounded-full bg-brand-500 px-1 py-0.5 text-[9px] font-bold text-ink-900">
+                        Primary
+                      </span>
+                    )}
+                    <span className="rounded-full border border-ink-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-ink-700">
+                      {row.location?.code}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-ink-700">
+                    <span className="font-mono text-[11px] text-ink-500">
+                      {row.orders} ord
+                    </span>
+                    <span className="font-extrabold">{currency(row.revenue)}</span>
+                  </div>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink-100">
+                  <div
+                    className="h-full rounded-full bg-brand-500"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 // ---- Recent transactions table ------------------------------------------
 
 function RecentTransactionsTable({ transactions }: { transactions: Transaction[] }) {
+  const locations = getLocations()
   const top = transactions.slice(0, 10)
   return (
     <div className="card p-0">
@@ -873,6 +1001,7 @@ function RecentTransactionsTable({ transactions }: { transactions: Transaction[]
               <tr>
                 <th className="px-5 py-3 font-semibold">Order</th>
                 <th className="px-5 py-3 font-semibold">Customer</th>
+                <th className="px-5 py-3 font-semibold">Location</th>
                 <th className="px-5 py-3 font-semibold">Method</th>
                 <th className="px-5 py-3 font-semibold text-right">Amount</th>
                 <th className="px-5 py-3 font-semibold">Date</th>
@@ -881,6 +1010,7 @@ function RecentTransactionsTable({ transactions }: { transactions: Transaction[]
             <tbody className="divide-y divide-ink-100">
               {top.map((t) => {
                 const m = getMember(t.memberId)
+                const loc = locations.find((l) => l.id === t.locationId)
                 return (
                   <tr key={t.id} className="hover:bg-ink-50/60">
                     <td className="px-5 py-3">
@@ -901,6 +1031,18 @@ function RecentTransactionsTable({ transactions }: { transactions: Transaction[]
                         </div>
                       ) : (
                         <span className="text-ink-500">Walk-in</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3 text-ink-700">
+                      {loc ? (
+                        <div>
+                          <div className="font-semibold text-ink-900">{loc.name}</div>
+                          <div className="font-mono text-[10px] text-ink-500">{loc.code}</div>
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-ink-500">
+                          <MapPin className="h-3 w-3" /> —
+                        </span>
                       )}
                     </td>
                     <td className="px-5 py-3">

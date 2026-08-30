@@ -25,9 +25,10 @@ import {
   isCardUsable,
   paymentMethodLabel,
 } from '../../payment-store'
-import { getDefaultLocationId } from '../../orders-store'
+import { getDefaultLocationId, getLocations, getLocation } from '../../orders-store'
 import { clearCart, getCart, getProducts } from '../../pos-store'
 import { getAuth, getBusiness } from '../../store'
+import { getActiveLocationIdSync } from '../../active-location'
 import type {
   Member,
   MembershipCard,
@@ -174,6 +175,9 @@ export default function POSPaymentPage() {
       qty: l.qty,
     }))
     const tax = business?.taxRate ? Math.round(((subtotal - discount) * business.taxRate) / 100) : 0
+    const activeId = getActiveLocationIdSync()
+    const locationId = business?.locations.multiLocation ? activeId : getDefaultLocationId()
+    const terminalId = extra.terminalId
     const created = createTransaction({
       businessId: business?.id ?? 'preview',
       operatorEmail: auth?.email ?? 'demo@ezsale.app',
@@ -183,7 +187,8 @@ export default function POSPaymentPage() {
       tax,
       total,
       method,
-      locationId: getDefaultLocationId(),
+      locationId,
+      terminalId,
       status: 'completed',
       ...extra,
     })

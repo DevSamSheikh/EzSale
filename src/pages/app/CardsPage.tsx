@@ -11,6 +11,7 @@ import {
   Filter,
   LayoutGrid,
   List,
+  MapPin,
   Nfc,
   Plus,
   Search,
@@ -31,6 +32,7 @@ import {
   suggestNextCardNumber,
   TIERS,
 } from '../../card-store'
+import { getLocations } from '../../orders-store'
 import type {
   MembershipCard,
   MembershipCardStatus,
@@ -523,6 +525,10 @@ function CardTile({ card, onOpen }: { card: MembershipCard; onOpen: () => void }
   const member = getMember(card.memberId)
   const Icon = typeIcon(card.type)
   const expired = isExpired(card)
+  const homeLoc = card.homeLocationId
+    ? getLocations().find((l) => l.id === card.homeLocationId)
+    : null
+  const isCrossLocation = card.usableAcrossLocations !== false
   const gradient =
     card.type === 'gift'
       ? 'from-rose-500 to-amber-500'
@@ -569,6 +575,28 @@ function CardTile({ card, onOpen }: { card: MembershipCard; onOpen: () => void }
           {cardTypeLabel(card.type)}
         </span>
       </div>
+
+      {(homeLoc || isCrossLocation !== undefined) && (
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-ink-100 bg-ink-50/50 px-2.5 py-1.5 text-[11px]">
+          {homeLoc ? (
+            <span className="inline-flex min-w-0 items-center gap-1 font-semibold text-ink-800">
+              <MapPin className="h-3 w-3 text-ink-500" />
+              <span className="truncate">{homeLoc.name}</span>
+            </span>
+          ) : (
+            <span className="text-ink-500">No home location</span>
+          )}
+          {isCrossLocation ? (
+            <span className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">
+              CROSS-LOCATION
+            </span>
+          ) : (
+            <span className="shrink-0 rounded-full bg-ink-100 px-1.5 py-0.5 text-[9px] font-bold text-ink-700">
+              HOME ONLY
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-2 border-t border-ink-100 pt-3 text-[11px]">
         <div>

@@ -285,7 +285,8 @@ export const PERMISSION_TO_NAV: Record<string, string> = {
   'transactions.view': '/app/transactions',
   'reports.view': '/app/reports',
   'analytics.view': '/app/analytics',
-  'staff.view': '/app/staff',
   'roles.view': '/app/roles',
   'settings.view': '/app/settings',
+  'staff.view': '/app/staff',
+  'settings.manage': '/app/locations',
 }

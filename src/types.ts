@@ -212,6 +212,10 @@ export interface BusinessLocationSettings {
   defaultLocationId: string
   /** When enabled, every sale is tagged with its terminal id */
   tagTransactionsWithTerminal: boolean
+  /** When enabled, membership cards can be used at any location */
+  cardsUsableAcrossLocations: boolean
+  /** When enabled, the operator must pick a location before checkout */
+  requireLocationSelectionAtPOS: boolean
 }
 
 export interface NavLink {
@@ -282,6 +286,10 @@ export interface MembershipCard {
   balance: number
   dailyLimit: number
   monthlyLimit: number
+  /** Location the card was originally issued at */
+  homeLocationId?: string
+  /** Whether this card may be tapped at any location (overrides the home-only flag) */
+  usableAcrossLocations?: boolean
   issuedAt: string
   expiresAt: string
   lastTransactionAt?: string
@@ -385,6 +393,8 @@ export interface Transaction {
   status: TransactionStatus
   /** Identifier of the location / terminal this order was rung up at */
   locationId?: string
+  /** Identifier of the specific POS terminal that rang up the sale */
+  terminalId?: string
   /** Free-form note attached by the operator */
   note?: string
   createdAt: string
@@ -414,15 +424,72 @@ export interface FinancialEvent {
   at: string
 }
 
+export type LocationStatus = 'active' | 'inactive' | 'maintenance' | 'archived'
+
+export type LocationType =
+  | 'store'
+  | 'kiosk'
+  | 'counter'
+  | 'popup'
+  | 'warehouse'
+  | 'office'
+  | 'venue'
+
+export interface OperatingHours {
+  /** ISO weekday number: 0 = Sunday, 1 = Monday, ... 6 = Saturday */
+  day: number
+  /** 'HH:mm' in 24-hour format; empty = closed */
+  open: string
+  close: string
+  closed?: boolean
+}
+
+export interface LocationContact {
+  phone?: string
+  email?: string
+  managerIds?: string[]
+}
+
+export interface POSTerminal {
+  id: string
+  locationId: string
+  name: string
+  /** Short hardware-style code, e.g. "T-01", "K-LOBBY" */
+  code: string
+  status: 'active' | 'inactive' | 'maintenance'
+  /** Last time this terminal reported activity (ISO timestamp) */
+  lastSeenAt?: string
+}
+
 export interface Location {
   id: string
   businessId: string
   name: string
   /** Short code shown on receipts / order rows */
   code: string
+  type: LocationType
+  /** Display address (street, city, postal) */
   address?: string
+  city?: string
+  region?: string
+  country?: string
   timezone?: string
-  active: boolean
+  /** Manager operators (operator ids). Empty array = unassigned. */
+  managerIds: string[]
+  /** POS terminals registered at this location. */
+  terminals: POSTerminal[]
+  /** Operating hours, one entry per weekday. */
+  hours: OperatingHours[]
+  contact: LocationContact
+  /** Whether membership cards work across this location and others */
+  acceptsSharedCards: boolean
+  /** Whether this is the primary / flagship location */
+  isPrimary?: boolean
+  status: LocationStatus
+  /** Free-form note shown in the editor */
+  notes?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 /** Permissions for the currently signed-in operator (admin by default) */

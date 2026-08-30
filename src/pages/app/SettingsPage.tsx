@@ -191,7 +191,7 @@ function makeDefault(): Parameters<typeof withDefaults>[0] {
     membershipCards: DEFAULT_MEMBERSHIP_CARD_SETTINGS,
     nfc: DEFAULT_NFC_SETTINGS,
     security: DEFAULT_SECURITY_SETTINGS,
-    locations: { multiLocation: true, defaultLocationId: 'loc-main', tagTransactionsWithTerminal: true },
+    locations: { multiLocation: true, defaultLocationId: 'loc-main', tagTransactionsWithTerminal: true, cardsUsableAcrossLocations: true, requireLocationSelectionAtPOS: false },
   })
 }
 
@@ -1424,6 +1424,20 @@ function LocationsSection({
           disabled={readOnly}
           onChange={(v) => update('tagTransactionsWithTerminal', v)}
         />
+        <Toggle
+          label="Membership cards usable across locations"
+          description="Members can tap their card at any active location. Disable to restrict cards to a single home location."
+          checked={l.cardsUsableAcrossLocations}
+          disabled={readOnly}
+          onChange={(v) => update('cardsUsableAcrossLocations', v)}
+        />
+        <Toggle
+          label="Require location selection at POS"
+          description="Operators must pick a location before ringing up a sale."
+          checked={l.requireLocationSelectionAtPOS}
+          disabled={readOnly}
+          onChange={(v) => update('requireLocationSelectionAtPOS', v)}
+        />
         <Field
           label="Default location"
           hint="Used by the POS when no operator or terminal override is supplied."
@@ -1445,7 +1459,7 @@ function LocationsSection({
 
       <SettingCard
         title="Registered locations"
-        description="All terminals / stores currently registered to this business. Manage their status from the locations screen (coming soon)."
+        description="All stores, kiosks and counters currently attached to this business. Open the locations page to add or update any of them."
         icon={Building2}
       >
         <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -1463,21 +1477,45 @@ function LocationsSection({
                   <span className="rounded-full border border-ink-200 bg-ink-50 px-1.5 py-0.5 text-[10px] font-bold text-ink-700">
                     {loc.code}
                   </span>
+                  {loc.isPrimary && (
+                    <span className="rounded-full bg-brand-50 px-1.5 py-0.5 text-[10px] font-bold text-ink-900">
+                      Primary
+                    </span>
+                  )}
                 </div>
-                <div className="truncate text-[11px] text-ink-500">{loc.address ?? '—'}</div>
+                <div className="truncate text-[11px] text-ink-500">
+                  {loc.address ?? 'No address'}
+                  {loc.city ? ` · ${loc.city}` : ''}
+                </div>
+                <div className="mt-1 truncate text-[10px] text-ink-400">
+                  {loc.terminals.length} terminal{loc.terminals.length === 1 ? '' : 's'} · {loc.managerIds.length} manager{loc.managerIds.length === 1 ? '' : 's'}
+                </div>
               </div>
               <span
                 className={
-                  loc.active
+                  loc.status === 'active'
                     ? 'rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700'
+                    : loc.status === 'maintenance'
+                    ? 'rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700'
                     : 'rounded-full bg-ink-100 px-2 py-0.5 text-[10px] font-bold text-ink-700'
                 }
               >
-                {loc.active ? 'Active' : 'Inactive'}
+                {loc.status === 'active'
+                  ? 'Active'
+                  : loc.status === 'maintenance'
+                  ? 'Maintenance'
+                  : loc.status === 'inactive'
+                  ? 'Inactive'
+                  : 'Archived'}
               </span>
             </li>
           ))}
         </ul>
+        <div className="border-t border-ink-100 pt-3">
+          <Link to="/app/locations" className="btn-secondary text-xs">
+            <Building2 className="h-3.5 w-3.5" /> Manage locations, managers &amp; terminals
+          </Link>
+        </div>
       </SettingCard>
     </>
   )

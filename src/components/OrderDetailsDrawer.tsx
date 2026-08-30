@@ -483,14 +483,44 @@ export function OrderDetailsDrawer({
                     <div className="text-[11px] uppercase tracking-wider text-ink-500">
                       Location
                     </div>
-                    <div className="truncate text-sm font-semibold text-ink-900">
-                      {ctx.location?.name ?? 'Unknown location'}
-                    </div>
+                    {ctx.location ? (
+                      <Link
+                        to="/app/locations"
+                        className="truncate text-sm font-semibold text-ink-900 hover:text-brand-700"
+                      >
+                        {ctx.location.name}
+                      </Link>
+                    ) : (
+                      <div className="truncate text-sm font-semibold text-ink-900">
+                        Unknown location
+                      </div>
+                    )}
                     {ctx.location?.code && (
                       <div className="text-[11px] text-ink-500">{ctx.location.code}</div>
                     )}
+                    {ctx.location?.address && (
+                      <div className="text-[11px] text-ink-500">{ctx.location.address}</div>
+                    )}
                   </div>
                 </li>
+                {txn.terminalId && (
+                  <li className="flex items-start gap-2">
+                    <Store className="mt-0.5 h-3.5 w-3.5 text-ink-400" />
+                    <div className="min-w-0">
+                      <div className="text-[11px] uppercase tracking-wider text-ink-500">
+                        Terminal
+                      </div>
+                      <div className="truncate text-sm font-semibold text-ink-900">
+                        {ctx.location?.terminals.find((t) => t.id === txn.terminalId)?.name ??
+                          txn.terminalId}
+                      </div>
+                      <div className="font-mono text-[11px] text-ink-500">
+                        {ctx.location?.terminals.find((t) => t.id === txn.terminalId)?.code ??
+                          ''}
+                      </div>
+                    </div>
+                  </li>
+                )}
                 <li className="flex items-start gap-2">
                   <Store className="mt-0.5 h-3.5 w-3.5 text-ink-400" />
                   <div className="min-w-0">

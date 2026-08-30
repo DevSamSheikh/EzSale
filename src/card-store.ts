@@ -199,6 +199,8 @@ const SAMPLE_CARDS: MembershipCard[] = [
     balance: 250,
     dailyLimit: 500,
     monthlyLimit: 5000,
+    homeLocationId: 'loc-main',
+    usableAcrossLocations: true,
     issuedAt: new Date(now - day * 90).toISOString(),
     expiresAt: new Date(now + day * 365).toISOString(),
     lastTransactionAt: new Date(now - 1000 * 60 * 60 * 2).toISOString(),
@@ -215,6 +217,8 @@ const SAMPLE_CARDS: MembershipCard[] = [
     balance: 45,
     dailyLimit: 200,
     monthlyLimit: 2000,
+    homeLocationId: 'loc-main',
+    usableAcrossLocations: true,
     issuedAt: new Date(now - day * 60).toISOString(),
     expiresAt: new Date(now + day * 200).toISOString(),
     lastTransactionAt: new Date(now - 1000 * 60 * 60 * 30).toISOString(),
@@ -231,6 +235,8 @@ const SAMPLE_CARDS: MembershipCard[] = [
     balance: 120,
     dailyLimit: 150,
     monthlyLimit: 1500,
+    homeLocationId: 'loc-kiosk',
+    usableAcrossLocations: true,
     issuedAt: new Date(now - day * 30).toISOString(),
     expiresAt: new Date(now + day * 30).toISOString(),
   },
@@ -246,6 +252,8 @@ const SAMPLE_CARDS: MembershipCard[] = [
     balance: 300,
     dailyLimit: 800,
     monthlyLimit: 8000,
+    homeLocationId: 'loc-main',
+    usableAcrossLocations: false,
     issuedAt: new Date(now - day * 400).toISOString(),
     expiresAt: new Date(now - day * 5).toISOString(),
     lastTransactionAt: new Date(now - day * 7).toISOString(),
@@ -262,6 +270,8 @@ const SAMPLE_CARDS: MembershipCard[] = [
     balance: 0,
     dailyLimit: 100,
     monthlyLimit: 1000,
+    homeLocationId: 'loc-express',
+    usableAcrossLocations: true,
     issuedAt: new Date(now - day * 12).toISOString(),
     expiresAt: new Date(now + day * 350).toISOString(),
   },
@@ -277,6 +287,8 @@ const SAMPLE_CARDS: MembershipCard[] = [
     balance: 800,
     dailyLimit: 1500,
     monthlyLimit: 15000,
+    homeLocationId: 'loc-main',
+    usableAcrossLocations: true,
     issuedAt: new Date(now - day * 170).toISOString(),
     expiresAt: new Date(now + day * 195).toISOString(),
     lastTransactionAt: new Date(now - day * 3).toISOString(),
@@ -532,6 +544,7 @@ function migrateCard(c: MembershipCard): MembershipCard {
     type: c.type ?? 'standard',
     memberId: c.memberId ?? null,
     tier: c.tier ?? 'Bronze',
+    usableAcrossLocations: c.usableAcrossLocations ?? true,
   }
   if (c.nfcUid !== undefined) out.nfcUid = c.nfcUid
   return out
@@ -840,6 +853,8 @@ export interface NewCardInput {
   monthlyLimit: number
   expiresAt: string
   status: MembershipCardStatus
+  homeLocationId?: string
+  usableAcrossLocations?: boolean
 }
 
 export function createCard(input: NewCardInput, by: string = 'admin@ezsale.app'): MembershipCard {
@@ -855,6 +870,8 @@ export function createCard(input: NewCardInput, by: string = 'admin@ezsale.app')
     balance: Math.max(0, input.balance),
     dailyLimit: input.dailyLimit,
     monthlyLimit: input.monthlyLimit,
+    homeLocationId: input.homeLocationId,
+    usableAcrossLocations: input.usableAcrossLocations ?? true,
     issuedAt: new Date().toISOString(),
     expiresAt: input.expiresAt,
   }

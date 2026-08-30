@@ -19,6 +19,7 @@ export const NAV_LINKS = [
   { to: '/app/analytics', label: 'Analytics', icon: 'TrendingUp' },
   { to: '/app/staff', label: 'Staff', icon: 'UserCog' },
   { to: '/app/roles', label: 'Roles', icon: 'ShieldCheck' },
+  { to: '/app/locations', label: 'Locations', icon: 'MapPin' },
   { to: '/app/settings', label: 'Settings', icon: 'Settings' },
 ] as const
 
@@ -177,6 +178,8 @@ export const DEFAULT_LOCATION_SETTINGS: BusinessLocationSettings = {
   multiLocation: true,
   defaultLocationId: 'loc-main',
   tagTransactionsWithTerminal: true,
+  cardsUsableAcrossLocations: true,
+  requireLocationSelectionAtPOS: false,
 }
 
 /** Ensure all nested settings objects are populated with defaults. */
