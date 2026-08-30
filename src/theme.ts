@@ -19,22 +19,27 @@ export interface ThemePreset {
 }
 
 export const THEME_PRESETS: ThemePreset[] = [
-  { id: 'lime-charcoal', name: 'Lime / Charcoal', primary: '#84eb0a', secondary: '#13171c' },
-  { id: 'blue-navy', name: 'Blue / Navy', primary: '#3a82f6', secondary: '#0b1d3a' },
-  { id: 'pink-charcoal', name: 'Pink / Charcoal', primary: '#FF788D', secondary: '#13171c' },
-  { id: 'sky-charcoal', name: 'Sky / Charcoal', primary: '#30AFFF', secondary: '#13171c' },
-  { id: 'violet-charcoal', name: 'Violet / Charcoal', primary: '#8b5cf6', secondary: '#13171c' },
-  { id: 'amber-charcoal', name: 'Amber / Charcoal', primary: '#f59e0b', secondary: '#13171c' },
-  { id: 'teal-charcoal', name: 'Teal / Charcoal', primary: '#14b8a6', secondary: '#13171c' },
-  { id: 'rose-charcoal', name: 'Rose / Charcoal', primary: '#f43f5e', secondary: '#13171c' },
-  { id: 'emerald-charcoal', name: 'Emerald / Charcoal', primary: '#10b981', secondary: '#13171c' },
-  { id: 'lime-black', name: 'Lime / Black', primary: '#84eb0a', secondary: '#000000' },
-  { id: 'blue-black', name: 'Blue / Black', primary: '#3a82f6', secondary: '#000000' },
-  { id: 'pink-black', name: 'Pink / Black', primary: '#FF788D', secondary: '#000000' },
-  { id: 'sky-black', name: 'Sky / Black', primary: '#30AFFF', secondary: '#000000' },
-  { id: 'violet-black', name: 'Violet / Black', primary: '#8b5cf6', secondary: '#000000' },
-  { id: 'amber-black', name: 'Amber / Black', primary: '#f59e0b', secondary: '#000000' },
-  { id: 'teal-black', name: 'Teal / Black', primary: '#14b8a6', secondary: '#000000' },
+  { id: 'lime', name: 'Lime', primary: '#84eb0a', secondary: '#13171c' },
+  { id: 'blue', name: 'Blue', primary: '#3a82f6', secondary: '#13171c' },
+  { id: 'pink', name: 'Pink', primary: '#FF788D', secondary: '#13171c' },
+  { id: 'sky', name: 'Sky', primary: '#30AFFF', secondary: '#13171c' },
+  { id: 'violet', name: 'Violet', primary: '#8b5cf6', secondary: '#13171c' },
+  { id: 'amber', name: 'Amber', primary: '#f59e0b', secondary: '#13171c' },
+  { id: 'teal', name: 'Teal', primary: '#14b8a6', secondary: '#13171c' },
+  { id: 'rose', name: 'Rose', primary: '#f43f5e', secondary: '#13171c' },
+  { id: 'emerald', name: 'Emerald', primary: '#10b981', secondary: '#13171c' },
+]
+
+/**
+ * A second set of accent colors for users who want a brighter, more saturated
+ * palette. These are rendered in their own row in the Appearance picker.
+ */
+export const VIBRANT_PRESETS: ThemePreset[] = [
+  { id: 'vibrant-teal', name: 'Teal', primary: '#24b1b1', secondary: '#13171c' },
+  { id: 'vibrant-orange', name: 'Orange', primary: '#ff6a1c', secondary: '#13171c' },
+  { id: 'vibrant-sea', name: 'Sea Green', primary: '#34a99d', secondary: '#13171c' },
+  { id: 'vibrant-deep-orange', name: 'Deep Orange', primary: '#fb6c00', secondary: '#13171c' },
+  { id: 'vibrant-material-blue', name: 'Material Blue', primary: '#2196f3', secondary: '#13171c' },
 ]
 
 export const SECONDARY_PRESETS: { id: string; name: string; value: string }[] = [
@@ -94,58 +99,173 @@ export function applyTheme(theme: Theme): void {
   const ink = buildScale(theme.secondary)
   // Tailwind needs the raw "R G B" components (no rgb() wrapper) so it can
   // apply alpha modifiers like `bg-brand-500/60`.
-  brand.forEach((hex, i) => {
-    const { r, g, b } = hexToRgb(hex)
-    root.style.setProperty(`--brand-${i * 100 + 50}-rgb`, `${r} ${g} ${b}`)
+  SCALE_STOPS.forEach((stop, i) => {
+    const brandRgb = hexToRgb(brand[i])
+    const inkRgb = hexToRgb(ink[i])
+    root.style.setProperty(
+      `--brand-${stop}-rgb`,
+      `${brandRgb.r} ${brandRgb.g} ${brandRgb.b}`,
+    )
+    root.style.setProperty(
+      `--ink-${stop}-rgb`,
+      `${inkRgb.r} ${inkRgb.g} ${inkRgb.b}`,
+    )
   })
-  ink.forEach((hex, i) => {
-    const { r, g, b } = hexToRgb(hex)
-    root.style.setProperty(`--ink-${i * 100 + 50}-rgb`, `${r} ${g} ${b}`)
-  })
+  // Compute the readable text color for each scale. The 500 stop is the
+  // accent / "true" color, so we decide text contrast off that. Using sRGB
+  // luminance (gamma-corrected) instead of raw 0-255 average gives a much
+  // more accurate threshold for color brightness.
+  const brandRgb = hexToRgb(brand[5]) // brand-500
+  const inkRgb = hexToRgb(ink[5]) // ink-500
+  const brandTextRgb = readableOn(brandRgb) ? WHITE_RGB : CHARCOAL_RGB
+  const inkTextRgb = readableOn(inkRgb) ? WHITE_RGB : CHARCOAL_RGB
+  root.style.setProperty(
+    '--text-on-brand-rgb',
+    `${brandTextRgb.r} ${brandTextRgb.g} ${brandTextRgb.b}`,
+  )
+  root.style.setProperty(
+    '--text-on-ink-rgb',
+    `${inkTextRgb.r} ${inkTextRgb.g} ${inkTextRgb.b}`,
+  )
   root.style.setProperty('--theme-secondary', theme.secondary)
   root.style.setProperty('--theme-primary', theme.primary)
 }
 
+// ---- Readable-text decision ----------------------------------------------
+
+const WHITE_RGB = { r: 255, g: 255, b: 255 }
+const CHARCOAL_RGB = { r: 19, g: 23, b: 28 } // matches ink-900
+
+// sRGB relative luminance (gamma-corrected, per WCAG). Returns 0..1.
+function srgbLuminance(r: number, g: number, b: number): number {
+  const channel = (c: number) => {
+    const v = c / 255
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+  }
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+}
+
+// Returns true if the given background is dark enough that white text reads
+// better. Threshold ~0.55 sits between mid-saturated (lime) and dark
+// (charcoal, navy), so the choice always matches the live preview.
+function readableOn(rgb: { r: number; g: number; b: number }): boolean {
+  return srgbLuminance(rgb.r, rgb.g, rgb.b) < 0.55
+}
+
 // ---- Palette derivation ---------------------------------------------------
 //
-// A 9-stop scale (50…900) is derived from a single hex color. We pick
-// well-spaced lightness stops (97 → 6) and adjust the hue slightly to keep
-// mid-shades from looking muddy. This is intentionally simple — good enough
-// for the whole app to pick "the same brand color" across light and dark UI.
+// A 10-stop scale (50/100/200/300/400/500/600/700/800/900) is derived from a
+// single hex color. **The picked color always becomes stop 500** (so buttons
+// and pills that use `bg-brand-500` match the preset the user clicked), and
+// the other stops are tinted/darkened versions of the same hue.
+//
+// Algorithm: convert the hex to HSL, then for each stop map to a target
+// lightness while keeping hue and chroma constant. Lightness 0.5 (mid-tone)
+// is reserved for the 500 stop so that, for example, picking #84eb0a yields
+// the exact lime at brand-500, with tints up to brand-50 and shades down to
+// brand-900. This matches the "preset stays the preset" expectation.
+
+export const SCALE_STOPS = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900] as const
+
+// Target lightness for each stop. The 500 stop uses the actual lightness
+// of the picked color; the others are well-spaced tints (50-400) and
+// shades (600-900). The 0.97 / 0.55 extremes are calibrated so a vivid
+// brand color (e.g. lime at L≈0.85) doesn't produce a brand-50 that's
+// indistinguishable from white, or a brand-900 that's pure black.
+const LIGHTNESS_BY_STOP: Record<number, number> = {
+  50: 0.97,
+  100: 0.94,
+  200: 0.86,
+  300: 0.77,
+  400: 0.66,
+  500: NaN, // computed from the picked color
+  600: 0.42,
+  700: 0.34,
+  800: 0.26,
+  900: 0.18,
+}
 
 function buildScale(hex: string): string[] {
   const { r, g, b } = hexToRgb(hex)
-  // Nine targets: 50, 100, 200, 300, 400, 500, 600, 700, 800, 900 → 9 stops.
-  // We'll produce 9 values that cover the full range from very light to very dark.
-  const lightTargets = [0.97, 0.92, 0.85, 0.74, 0.6, 0.5, 0.42, 0.32, 0.18]
-  return lightTargets.map((target) => mixToLightness(r, g, b, target))
+  const { h, s, l } = rgbToHsl(r, g, b)
+  // Slightly reduce chroma at the very light / very dark stops to keep the
+  // tints/shades looking clean instead of muddy.
+  return SCALE_STOPS.map((stop) => {
+    const target =
+      stop === 500
+        ? l
+        : (LIGHTNESS_BY_STOP[stop] as number)
+    const chromaScale =
+      stop <= 100 || stop >= 800
+        ? 0.6 // tone down tints/shades
+        : stop === 500
+        ? 1
+        : 0.9
+    const sAdj = Math.max(0, Math.min(1, s * chromaScale))
+    return hslToHex(h, sAdj, target)
+  })
 }
 
-function mixToLightness(r: number, g: number, b: number, target: number): string {
-  // Mix the color toward white (if target > current lightness) or black
-  // (if target < current lightness) to hit the requested lightness.
-  const currentL = relativeLuminance(r, g, b)
-  if (Math.abs(currentL - target) < 0.01) return rgbToHex(r, g, b)
-  if (currentL > target) {
-    // mix toward black
-    const t = (currentL - target) / currentL
-    return rgbToHex(
-      Math.round(r * (1 - t)),
-      Math.round(g * (1 - t)),
-      Math.round(b * (1 - t)),
-    )
+// ---- Color math ----------------------------------------------------------
+
+function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
+  const rn = r / 255
+  const gn = g / 255
+  const bn = b / 255
+  const max = Math.max(rn, gn, bn)
+  const min = Math.min(rn, gn, bn)
+  const l = (max + min) / 2
+  let h = 0
+  let s = 0
+  if (max !== min) {
+    const d = max - min
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+    switch (max) {
+      case rn:
+        h = (gn - bn) / d + (gn < bn ? 6 : 0)
+        break
+      case gn:
+        h = (bn - rn) / d + 2
+        break
+      default:
+        h = (rn - gn) / d + 4
+    }
+    h *= 60
   }
-  // mix toward white
-  const t = (target - currentL) / (1 - currentL)
-  return rgbToHex(
-    Math.round(r + (255 - r) * t),
-    Math.round(g + (255 - g) * t),
-    Math.round(b + (255 - b) * t),
-  )
+  return { h, s, l }
 }
 
-function relativeLuminance(r: number, g: number, b: number): number {
-  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+function hslToHex(h: number, s: number, l: number): string {
+  const c = (1 - Math.abs(2 * l - 1)) * s
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+  const m = l - c / 2
+  let r = 0
+  let g = 0
+  let b = 0
+  if (h < 60) {
+    r = c
+    g = x
+  } else if (h < 120) {
+    r = x
+    g = c
+  } else if (h < 180) {
+    g = c
+    b = x
+  } else if (h < 240) {
+    g = x
+    b = c
+  } else if (h < 300) {
+    r = x
+    b = c
+  } else {
+    r = c
+    b = x
+  }
+  return rgbToHex(
+    Math.round((r + m) * 255),
+    Math.round((g + m) * 255),
+    Math.round((b + m) * 255),
+  )
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {

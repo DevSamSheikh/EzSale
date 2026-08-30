@@ -1,5 +1,38 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
+/*
+ * Theme fallback variables.
+ *
+ * The runtime theme module (src/theme.ts + public/theme-boot.js) overwrites
+ * these on :root with a per-user palette. The values below are the original
+ * Tailwind defaults so every `bg-brand-*` / `text-ink-*` class resolves to
+ * a real color even before the JS runs (SSR, HMR, blocked scripts, etc.).
+ */
+:root {
+  --brand-50-rgb: 243 255 230;
+  --brand-100-rgb: 230 255 206;
+  --brand-200-rgb: 207 255 157;
+  --brand-300-rgb: 184 255 108;
+  --brand-400-rgb: 158 255 58;
+  --brand-500-rgb: 132 235 10;
+  --brand-600-rgb: 108 200 0;
+  --brand-700-rgb: 85 156 0;
+  --brand-800-rgb: 67 120 0;
+  --brand-900-rgb: 53 92 0;
+  --ink-50-rgb: 246 247 248;
+  --ink-100-rgb: 236 238 240;
+  --ink-200-rgb: 213 216 221;
+  --ink-300-rgb: 177 183 192;
+  --ink-400-rgb: 126 134 148;
+  --ink-500-rgb: 83 91 106;
+  --ink-600-rgb: 58 65 77;
+  --ink-700-rgb: 42 48 56;
+  --ink-800-rgb: 29 34 41;
+  --ink-900-rgb: 19 23 28;
+  --text-on-brand-rgb: 19 23 28;
+  --text-on-ink-rgb: 255 255 255;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -89,7 +122,8 @@
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary {
-    @apply btn bg-brand-500 text-ink-900 hover:bg-brand-400 shadow-soft;
+    @apply btn bg-brand-500 hover:bg-brand-400 shadow-soft;
+    color: rgb(var(--text-on-brand-rgb));
   }
   .btn-secondary {
     @apply btn bg-white border border-ink-200 text-ink-800 hover:bg-ink-50;
@@ -152,7 +186,8 @@
     @apply inline-flex items-center gap-1.5 rounded-pill border border-ink-200 bg-white px-3.5 py-1.5 text-sm font-medium text-ink-700 transition-colors hover:bg-ink-50;
   }
   .pos-pill-active {
-    @apply pos-pill bg-brand-500 text-ink-900 border-brand-500 hover:bg-brand-400;
+    @apply pos-pill bg-brand-500 border-brand-500 hover:bg-brand-400;
+    color: rgb(var(--text-on-brand-rgb));
   }
   .pos-qty-btn {
     @apply grid h-7 w-7 place-items-center rounded-full bg-ink-900 text-white transition-colors hover:bg-ink-800 disabled:opacity-40 disabled:cursor-not-allowed;
@@ -161,7 +196,8 @@
     @apply grid h-7 w-7 place-items-center rounded-full border border-ink-200 bg-white text-ink-700 transition-colors hover:bg-ink-50 disabled:opacity-40 disabled:cursor-not-allowed;
   }
   .pos-add-btn {
-    @apply grid h-8 w-8 place-items-center rounded-full bg-brand-500 text-ink-900 shadow-soft transition-colors hover:bg-brand-400;
+    @apply grid h-8 w-8 place-items-center rounded-full bg-brand-500 shadow-soft transition-colors hover:bg-brand-400;
+    color: rgb(var(--text-on-brand-rgb));
   }
   .pos-fav-btn {
     @apply grid h-7 w-7 place-items-center rounded-full bg-white/90 backdrop-blur text-ink-400 transition-colors hover:text-red-500;

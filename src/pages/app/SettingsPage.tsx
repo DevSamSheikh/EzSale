@@ -14,12 +14,14 @@ import {
   applyTheme,
   DEFAULT_THEME,
   getTheme,
+  SCALE_STOPS,
   SECONDARY_PRESETS,
   setBoth,
   setPrimary,
   setSecondary,
   subscribeTheme,
   THEME_PRESETS,
+  VIBRANT_PRESETS,
   type Theme,
 } from '../../theme'
 
@@ -326,46 +328,32 @@ function AppearanceSection() {
           <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">
             Theme color
           </div>
-          <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6">
-            {THEME_PRESETS.map((p) => {
-              const active = p.primary.toLowerCase() === theme.primary.toLowerCase()
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => pickPrimary(p.primary)}
-                  className="group flex flex-col items-center gap-1.5"
-                  title={p.name}
-                  aria-label={p.name}
-                  aria-pressed={active}
-                >
-                  <span
-                    className={`relative grid h-9 w-9 place-items-center rounded-xl border transition-all ${
-                      active
-                        ? 'border-ink-900 ring-2 ring-ink-900/20'
-                        : 'border-ink-200 hover:border-ink-400'
-                    }`}
-                    style={{ background: p.primary }}
-                  >
-                    {active && (
-                      <Check
-                        className="h-4 w-4"
-                        style={{ color: isLight(p.primary) ? '#13171c' : '#ffffff' }}
-                      />
-                    )}
-                  </span>
-                  <span
-                    className={`text-[10px] font-semibold ${
-                      active ? 'text-ink-900' : 'text-ink-500'
-                    }`}
-                  >
-                    {p.primary}
-                  </span>
-                </button>
-              )
-            })}
+          <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3">
+            {THEME_PRESETS.map((p) => (
+              <ThemeSwatch
+                key={p.id}
+                preset={p}
+                active={p.primary.toLowerCase() === theme.primary.toLowerCase()}
+                onPick={pickPrimary}
+              />
+            ))}
+          </div>
+
+          <div className="mt-4 text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+            Vibrant
+          </div>
+          <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3">
+            {VIBRANT_PRESETS.map((p) => (
+              <ThemeSwatch
+                key={p.id}
+                preset={p}
+                active={p.primary.toLowerCase() === theme.primary.toLowerCase()}
+                onPick={pickPrimary}
+              />
+            ))}
           </div>
           <p className="mt-2 text-[11px] text-ink-500">
-            Pick a preset. The matching button label shows the hex value.
+            Each preset shows the accent color and a dark strip for the secondary.
           </p>
         </div>
 
@@ -419,7 +407,7 @@ function AppearanceSection() {
               >
                 <span
                   className="h-3 w-3 rounded-sm"
-                  style={{ background: isLight(theme.primary) ? '#13171c' : '#ffffff' }}
+                  style={{ background: 'rgb(var(--text-on-brand-rgb))' }}
                 />
               </span>
               <div>
@@ -431,7 +419,10 @@ function AppearanceSection() {
           <div className="rounded-2xl border border-ink-100 bg-white p-4">
             <span
               className="inline-flex items-center rounded-pill px-3 py-1 text-[11px] font-bold"
-              style={{ background: theme.primary, color: isLight(theme.primary) ? '#13171c' : '#ffffff' }}
+              style={{
+                background: theme.primary,
+                color: 'rgb(var(--text-on-brand-rgb))',
+              }}
             >
               Primary action
             </span>
@@ -441,13 +432,51 @@ function AppearanceSection() {
             className="rounded-2xl p-4"
             style={{ background: theme.secondary }}
           >
-            <div className="text-xs" style={{ color: '#ffffff' }}>
+            <div className="text-xs" style={{ color: 'rgb(var(--text-on-ink-rgb))' }}>
               Dark surface
             </div>
-            <div className="text-[11px]" style={{ color: '#b1b7c0' }}>
+            <div className="text-[11px] opacity-80" style={{ color: 'rgb(var(--text-on-ink-rgb))' }}>
               Used for dark stat cards and footers.
             </div>
           </div>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-ink-100 bg-white p-4">
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+              Brand scale (50 → 900)
+            </div>
+            <span className="font-mono text-[10px] text-ink-500">{theme.primary}</span>
+          </div>
+          <div className="mt-2 flex h-7 overflow-hidden rounded-lg border border-ink-200">
+            {SCALE_STOPS.map((stop) => (
+              <div
+                key={`b-${stop}`}
+                className="flex-1"
+                style={{ background: `rgb(var(--brand-${stop}-rgb))` }}
+                title={`brand-${stop}`}
+              />
+            ))}
+          </div>
+          <div className="mt-3 flex items-center justify-between">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+              Ink scale (50 → 900)
+            </div>
+            <span className="font-mono text-[10px] text-ink-500">{theme.secondary}</span>
+          </div>
+          <div className="mt-2 flex h-7 overflow-hidden rounded-lg border border-ink-200">
+            {SCALE_STOPS.map((stop) => (
+              <div
+                key={`i-${stop}`}
+                className="flex-1"
+                style={{ background: `rgb(var(--ink-${stop}-rgb))` }}
+                title={`ink-${stop}`}
+              />
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-ink-500">
+            Hover any stop to see its name. The 500 stop is always the color you picked.
+          </p>
         </div>
       </div>
     </div>
@@ -470,6 +499,58 @@ function isLight(hex: string): boolean {
   const b = num & 0xff
   const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
   return lum > 0.6
+}
+
+function ThemeSwatch({
+  preset,
+  active,
+  onPick,
+}: {
+  preset: { id: string; name: string; primary: string; secondary: string }
+  active: boolean
+  onPick: (hex: string) => void
+}) {
+  return (
+    <button
+      onClick={() => onPick(preset.primary)}
+      className={`group flex items-center gap-2.5 rounded-xl border p-2 text-left transition-all ${
+        active
+          ? 'border-ink-900 ring-2 ring-ink-900/15 bg-ink-50/40'
+          : 'border-ink-200 bg-white hover:border-ink-400'
+      }`}
+      title={`${preset.name} (${preset.primary})`}
+      aria-label={preset.name}
+      aria-pressed={active}
+    >
+      <span
+        className="relative grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-lg border border-ink-900/10"
+        style={{ background: preset.primary }}
+      >
+        <span
+          className="absolute bottom-0 left-0 right-0 h-1.5"
+          style={{ background: preset.secondary }}
+        />
+        {active && (
+          <Check
+            className="relative h-4 w-4"
+            style={{ color: isLight(preset.primary) ? '#13171c' : '#ffffff' }}
+          />
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span
+          className={`block truncate text-xs font-bold ${
+            active ? 'text-ink-900' : 'text-ink-800'
+          }`}
+        >
+          {preset.name}
+        </span>
+        <span className="block truncate font-mono text-[10px] text-ink-500">
+          {preset.primary}
+        </span>
+      </span>
+    </button>
+  )
 }
 
 // ---------------------------------------------------------------------------
