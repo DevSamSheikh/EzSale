@@ -26,6 +26,11 @@ import {
   setCartQty,
   type POSProduct,
 } from '../../pos-store'
+import {
+  CATEGORIES_UPDATED_EVENT,
+  getCategoriesForBusiness,
+} from '../../categories-store'
+import { getBusiness } from '../../store'
 import { POSNavbar } from '../../components/POSNavbar'
 import { playCue } from '../../audio'
 
@@ -571,12 +576,14 @@ function CartPanel({
 
 export default function POSPage() {
   const navigate = useNavigate()
+  const business = getBusiness()
   const [products, setProducts] = useState<POSProduct[]>([])
   const [cart, setCart] = useState<{ productId: string; qty: number }[]>([])
   const [activeCat, setActiveCat] = useState<CategoryFilter>('All')
   const [query, setQuery] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  const [categoriesTick, setCategoriesTick] = useState(0)
   const [promoId, setPromoId] = useState<PromoId>(() => {
     if (typeof window === 'undefined') return 'default'
     return (localStorage.getItem('ezsale:pos:promo') as PromoId) || 'default'
@@ -612,11 +619,16 @@ export default function POSPage() {
       )
       setCart(getCart())
     }
+    function refreshCategories() {
+      setCategoriesTick((t) => t + 1)
+    }
     refresh()
     window.addEventListener(PRODUCTS_UPDATED_EVENT, refresh)
+    window.addEventListener(CATEGORIES_UPDATED_EVENT, refreshCategories)
     window.addEventListener('storage', refresh)
     return () => {
       window.removeEventListener(PRODUCTS_UPDATED_EVENT, refresh)
+      window.removeEventListener(CATEGORIES_UPDATED_EVENT, refreshCategories)
       window.removeEventListener('storage', refresh)
     }
   }, [])
@@ -628,9 +640,30 @@ export default function POSPage() {
   }, [toast])
 
   const categories = useMemo(() => {
-    const list = getCategories(products)
-    return ['All', ...list]
-  }, [products])
+    // Union of categories the admin configured + categories that actually
+    // appear on a product, in the order the admin picked. Hidden/archived
+    // categories never reach the POS.
+    const productCats = getCategories(products)
+    const configured = getCategoriesForBusiness(business?.type)
+    const seen = new Set<string>()
+    const ordered: string[] = []
+    configured.forEach((c) => {
+      if (!seen.has(c.name)) {
+        seen.add(c.name)
+        ordered.push(c.name)
+      }
+    })
+    productCats.forEach((c) => {
+      if (!seen.has(c)) {
+        seen.add(c)
+        ordered.push(c)
+      }
+    })
+    return ['All', ...ordered]
+    // categoriesTick is included so configured-categories updates re-derive
+    // the list; eslint can't infer that.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, business, categoriesTick])
 
   useEffect(() => {
     if (activeCat !== 'All' && !categories.includes(activeCat)) {

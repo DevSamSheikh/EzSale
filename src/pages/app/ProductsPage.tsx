@@ -43,6 +43,7 @@ import {
   type POSProduct,
   type ProductBadge,
 } from '../../pos-store'
+import { CATEGORIES_UPDATED_EVENT, getCategoriesForBusiness } from '../../categories-store'
 import { getBusiness } from '../../store'
 import { playCue } from '../../audio'
 
@@ -269,6 +270,7 @@ export default function ProductsPage() {
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<POSProduct | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [categoriesTick, setCategoriesTick] = useState(0)
 
   function refresh() {
     setProducts(getProducts())
@@ -279,8 +281,15 @@ export default function ProductsPage() {
     function onUpdate() {
       refresh()
     }
+    function onCategories() {
+      setCategoriesTick((t) => t + 1)
+    }
     window.addEventListener('storage', onUpdate)
-    return () => window.removeEventListener('storage', onUpdate)
+    window.addEventListener(CATEGORIES_UPDATED_EVENT, onCategories)
+    return () => {
+      window.removeEventListener('storage', onUpdate)
+      window.removeEventListener(CATEGORIES_UPDATED_EVENT, onCategories)
+    }
   }, [])
 
   useEffect(() => {
@@ -290,10 +299,18 @@ export default function ProductsPage() {
   }, [toast])
 
   const categories = useMemo(() => {
+    // Source of truth: the categories store (admin-managed, ordered, scoped
+    // to the business type). Fall back to any product-only categories that
+    // haven't been registered yet, so the filter never silently drops them.
+    const fromStore = getCategoriesForBusiness(business?.type, { includeHidden: true }).map(
+      (c) => c.name,
+    )
     const fromProducts = getCategories(products)
     const fromBusiness = business?.categories ?? []
-    return Array.from(new Set([...fromBusiness, ...fromProducts])).sort()
-  }, [products, business])
+    return Array.from(new Set([...fromStore, ...fromBusiness, ...fromProducts]))
+    // categoriesTick forces a recompute when the categories store changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, business, categoriesTick])
 
   const stats = useMemo(() => {
     const total = products.length

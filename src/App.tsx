@@ -11,6 +11,7 @@ import POSPage from './pages/app/POSPage'
 import POSPaymentPage from './pages/app/POSPaymentPage'
 import POSReceiptPage from './pages/app/POSReceiptPage'
 import ProductsPage from './pages/app/ProductsPage'
+import CategoriesPage from './pages/app/CategoriesPage'
 import OrdersPage from './pages/app/OrdersPage'
 import UsersPage from './pages/app/UsersPage'
 import UserDetailsPage from './pages/app/UserDetailsPage'
@@ -91,6 +92,7 @@ export default function App() {
           <Route path="pos/payment" element={<POSPaymentPage />} />
           <Route path="pos/receipt/:txnId" element={<POSReceiptPage />} />
           <Route path="products" element={<ProductsPage />} />
+          <Route path="categories" element={<CategoriesPage />} />
           <Route path="orders" element={<OrdersPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="users/:memberId" element={<UserDetailsPage />} />

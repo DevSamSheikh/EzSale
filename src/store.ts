@@ -8,6 +8,7 @@ export const NAV_LINKS = [
   { to: '/app/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
   { to: '/app/pos', label: 'POS', icon: 'MonitorPlay' },
   { to: '/app/products', label: 'Products', icon: 'Package' },
+  { to: '/app/categories', label: 'Categories', icon: 'Layers' },
   { to: '/app/orders', label: 'Orders', icon: 'Receipt' },
   { to: '/app/users', label: 'Users', icon: 'Users' },
   { to: '/app/cards', label: 'Cards', icon: 'CreditCard' },

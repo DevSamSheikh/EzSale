@@ -1,5 +1,6 @@
 import {
   LayoutDashboard,
+  Layers,
   MonitorPlay,
   Package,
   Receipt,
@@ -16,6 +17,7 @@ import {
 
 const ICONS: Record<string, LucideIcon> = {
   LayoutDashboard,
+  Layers,
   MonitorPlay,
   Package,
   Receipt,

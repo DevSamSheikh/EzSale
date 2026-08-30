@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { PageHeader } from '../../components/Primitives'
 import { BUSINESS_TYPES, CURRENCIES, TIMEZONES, TERMINOLOGY_BY_TYPE, getBusiness, saveBusiness } from '../../store'
-import type { Business } from '../../types'
-import { Check, Palette, Save, Volume2, VolumeX } from 'lucide-react'
+import type { Business, BusinessType, Terminology } from '../../types'
+import { Check, Layers, Palette, RotateCcw, Save, Volume2, VolumeX } from 'lucide-react'
+import { BusinessTypeIcon } from '../../icons'
 import {
   getAudioSettings,
   playCue,
@@ -108,6 +109,12 @@ export default function SettingsPage() {
                   <input className="input" value={b.contactPhone} onChange={(e) => setB({ ...b, contactPhone: e.target.value })} />
                 </div>
               </div>
+
+              <TerminologySection
+                terminology={b.terminology}
+                businessType={b.type}
+                onChange={(terminology) => setB({ ...b, terminology })}
+              />
 
               <AppearanceSection />
             </div>
@@ -463,4 +470,154 @@ function isLight(hex: string): boolean {
   const b = num & 0xff
   const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
   return lum > 0.6
+}
+
+// ---------------------------------------------------------------------------
+// Business configuration: terminology
+// ---------------------------------------------------------------------------
+
+function TerminologySection({
+  terminology,
+  businessType,
+  onChange,
+}: {
+  terminology: Terminology
+  businessType: BusinessType
+  onChange: (t: Terminology) => void
+}) {
+  const defaults = TERMINOLOGY_BY_TYPE[businessType]
+  const dirty =
+    terminology.product !== defaults.product ||
+    terminology.productPlural !== defaults.productPlural ||
+    terminology.member !== defaults.member ||
+    terminology.memberPlural !== defaults.memberPlural ||
+    terminology.unit !== defaults.unit ||
+    terminology.order !== defaults.order
+
+  function set<K extends keyof Terminology>(key: K, value: Terminology[K]) {
+    onChange({ ...terminology, [key]: value })
+  }
+
+  return (
+    <div className="rounded-2xl border border-ink-200 bg-white p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+            <Layers className="h-4 w-4 text-ink-500" /> Business configuration
+          </div>
+          <p className="mt-1 max-w-md text-xs text-ink-500">
+            Customize the words the app uses for your catalog. The defaults change
+            based on the business type you picked.
+          </p>
+        </div>
+        {dirty && (
+          <button
+            onClick={() => onChange({ ...defaults })}
+            className="rounded-pill border border-ink-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-ink-700 hover:bg-ink-50"
+          >
+            <RotateCcw className="mr-1 inline h-3 w-3" /> Reset to defaults
+          </button>
+        )}
+      </div>
+
+      <div className="mt-4 flex items-center gap-2 rounded-2xl border border-ink-100 bg-ink-50/40 p-3">
+        <BusinessTypeIcon type={businessType} className="h-5 w-5 text-ink-700" />
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+            Current business type
+          </div>
+          <div className="text-sm font-semibold text-ink-900">
+            {BUSINESS_TYPES.find((b) => b.value === businessType)?.label ?? 'Custom'}
+          </div>
+        </div>
+        <p className="ml-auto max-w-md text-[11px] text-ink-500">
+          Switching business type resets the terminology defaults above. You can still
+          fine-tune every word below.
+        </p>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <TermInput
+          label={`What do you call a single ${defaults.product.toLowerCase()}?`}
+          value={terminology.product}
+          placeholder={defaults.product}
+          onChange={(v) => set('product', v)}
+        />
+        <TermInput
+          label={`What do you call multiple ${defaults.productPlural.toLowerCase()}?`}
+          value={terminology.productPlural}
+          placeholder={defaults.productPlural}
+          onChange={(v) => set('productPlural', v)}
+        />
+        <TermInput
+          label={`What do you call a single ${defaults.member.toLowerCase()}?`}
+          value={terminology.member}
+          placeholder={defaults.member}
+          onChange={(v) => set('member', v)}
+        />
+        <TermInput
+          label={`What do you call multiple ${defaults.memberPlural.toLowerCase()}?`}
+          value={terminology.memberPlural}
+          placeholder={defaults.memberPlural}
+          onChange={(v) => set('memberPlural', v)}
+        />
+        <TermInput
+          label={`What is the unit you sell by?`}
+          value={terminology.unit}
+          placeholder={defaults.unit}
+          onChange={(v) => set('unit', v)}
+        />
+        <TermInput
+          label={`What do you call a single order?`}
+          value={terminology.order}
+          placeholder={defaults.order}
+          onChange={(v) => set('order', v)}
+        />
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-dashed border-ink-200 bg-ink-50/40 p-4">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+          Preview
+        </div>
+        <div className="mt-2 grid grid-cols-1 gap-2 text-sm text-ink-700 sm:grid-cols-2">
+          <div>
+            “Add new <span className="font-bold text-ink-900">{terminology.product.toLowerCase()}</span>” · {terminology.productPlural} list
+          </div>
+          <div>
+            “Top <span className="font-bold text-ink-900">{terminology.memberPlural.toLowerCase()}</span> this month”
+          </div>
+          <div>
+            “Choose a <span className="font-bold text-ink-900">{terminology.unit.toLowerCase()}</span>”
+          </div>
+          <div>
+            “View <span className="font-bold text-ink-900">{terminology.order.toLowerCase()}</span> details”
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TermInput({
+  label,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string
+  value: string
+  placeholder: string
+  onChange: (v: string) => void
+}) {
+  return (
+    <div>
+      <label className="label text-xs">{label}</label>
+      <input
+        className="input"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+    </div>
+  )
 }
