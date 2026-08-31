@@ -1099,6 +1099,13 @@ export function getCardDeposits(cardId: string): CardDeposit[] {
     .sort((a, b) => (a.at < b.at ? 1 : -1))
 }
 
+/** Returns every deposit record across all cards. */
+export function getAllCardDeposits(): CardDeposit[] {
+  if (typeof window === 'undefined') return []
+  return safeParse<CardDeposit[]>(localStorage.getItem(KEY_DEPOSITS), [])
+    .sort((a, b) => (a.at < b.at ? 1 : -1))
+}
+
 export function getCardTransactions(cardId: string): Transaction[] {
   return getTransactions()
     .filter((t) => t.cardId === cardId)

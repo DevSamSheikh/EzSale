@@ -28,7 +28,7 @@
 | Deposits | `/app/deposits` | Card top-up records | 🟢 Complete | 🟢 Complete | 🟢 Complete | DepositsTable | Payments, Cards | None | Real deposit-provider integration |
 | Deposit Requests | `/app/deposit-requests` | Pending top-up requests | 🟢 Complete | 🟢 Complete | 🟢 Complete | RequestsTable, ApproveDialog | Payments, Cards | None | Bulk approve action |
 | Transactions | `/app/transactions` | Full transaction ledger | 🟢 Complete | 🟢 Complete | 🟢 Complete | TransactionsTable, TransactionDetailsDrawer | Transactions, Refunds, Locations | None | Export reconciliation report |
-| Reports | `/app/reports` | Pre-built report catalog | 🟡 In Progress | 🟡 In Progress | 🟡 In Progress | Report cards | Reports | Buttons are placeholders | Actual report generation per card |
+| Reports | `/app/reports` | Pre-built report catalog with 9 categories and 15 ready reports | 🟢 Complete | 🟢 Complete | 🟢 Complete | ReportsCatalog, ReportRunner, **reports-engine** | Reports, Analytics, Locations | None | Saved reports, scheduled email delivery, custom report builder |
 | Analytics | `/app/analytics` | Charts, trends, comparisons | 🟢 Complete | 🟢 Complete | 🟢 Complete | KpiGrid, LineChart, DonutChart | Analytics, Locations | None | Saved views, scheduled email digests |
 | Staff | `/app/staff` | Operator (employee) list | 🟢 Complete | 🟢 Complete | 🟢 Complete | OperatorTable, Editor | Staff, Locations, Roles | None | Bulk invite via email |
 | Operator Details | `/app/staff/:operatorId` | Single operator profile | 🟢 Complete | 🟢 Complete | 🟢 Complete | Profile, Permissions, Activity | Staff, Roles, Locations | None | Force-logout button |
@@ -65,7 +65,7 @@
 | Dashboard KPIs | 🟢 Complete | Today / yesterday / week / revenue / active users / low-balance |
 | Dashboard Sales-by-Location | 🟢 Complete | New breakdown widget with revenue share bars |
 | Analytics | 🟢 Complete | Period-over-period, donut, top products, top users, operators, cards |
-| Reports | 🟡 In Progress | Catalog cards render; "Run report" buttons are placeholders |
+| Reports | 🟢 Complete | New `reports-engine` (15 pre-built reports across 9 categories: sales, orders, products, users, cards, deposits, transactions, refunds, operators). Every report supports a date range plus filters for location, payment method, product category, operator, member, and card. Results render in a clean sortable table with summary KPI tiles. **CSV export** (`.csv` download) and **PDF export** (opens a print-ready HTML window with the same table + summary, honours `@page A4 landscape`) are wired for every report. Each report declares its own columns, summary, and tone; visuals are consistent with the Analytics and Dashboard pages (rounded-2xl cards, ink-100 borders, brand / emerald / rose severity colours). |
 | Multi-Location (locations page) | 🟢 Complete | CRUD locations, terminals, managers, operating hours, status, primary flag |
 | Multi-Location (filtering) | 🟢 Complete | Orders, Transactions, Analytics all filter by location; Topbar global chip |
 | Multi-Location (POS tagging) | 🟢 Complete | Active-location context stored; new transactions stamped with locationId and (optional) terminalId |
@@ -114,6 +114,7 @@
 | **ReceiptPreviewModal** *(new)* | Full-screen modal: thermal / standard layout toggle, zoom, Print, Download (.txt / .html), Email (mailto:), Copy text, New order, ESC + Ctrl/Cmd+P shortcuts. ESC closes. | 🟢 Complete | |
 | **NotificationDropdown** *(new)* | Topbar bell with unread count, severity-bordered rows, All / Unread filter, mark-all-read, deep-links. Standalone `TopbarNotifications` exports a button + dropdown for the topbar. | 🟢 Complete | |
 | **POSAlertStrip** *(new)* | Horizontally-scrolling alert strip pinned to the top of the POS screen. Surfaces up to 3 high-priority unread notifications (deposit requests, low balance, refunds, card status) with severity colour, dismissable, click-to-mark-read. | 🟢 Complete | |
+| **reports-engine** *(new)* | `src\reports-engine.ts` — 15 ready reports + shared types, formatters, CSV / PDF export helpers. Pure functions over the existing stores; no new state. | 🟢 Complete | |
 
 ---
 
@@ -249,7 +250,7 @@
 
 | ID | Area | Issue | Severity |
 |----|------|-------|----------|
-| ISSUE-001 | Reports | "Run report" buttons are placeholders | Medium |
+| ISSUE-001 | Reports | "Run report" buttons are placeholders | Resolved 2026-08-31 (see Reports entry) |
 | ISSUE-002 | Auth | Password reset is a UI stub (no email/token) | High |
 | ISSUE-003 | Notifications | Bell shows a static list; no real subscription engine | Resolved 2026-08-31 (see Notifications & Activity Center entry) |
 | ISSUE-004 | Inventory | Stock thresholds tracked; no reorder / purchase-order workflow | Medium |
@@ -271,6 +272,16 @@
 ## 8. Change Log
 
 > Most recent first.
+
+### 2026-08-31 — Reports
+
+- **New engine** — `src\reports-engine.ts` ships the report model (`ReportDefinition`, `ReportFilters`, `ReportResult`, `ReportCategory`) and 15 working reports grouped under 9 categories: Sales (daily, by-location, by-payment-method), Orders (detail), Products (performance, inventory snapshot), Users (detail, tier-movement), Cards (detail, balance), Deposits (detail), Transactions (raw ledger), Refunds & Adjustments, and Operators (performance, activity). Every report supports date range plus filters for location, payment method, product category, operator, member, and card. The engine is pure (no new persistence) and reads from the existing localStorage-backed stores.
+- **Catalog UI** — `ReportsPage` now has a category-coloured, searchable catalog with category chips and tag pills. Picking a report opens the runner with the report's `defaultFilters` pre-applied (e.g. "Daily sales" defaults to today; "by-location" / "by-payment-method" / "performance" / etc. default to the last 30 days).
+- **Runner UI** — A filter panel with date pickers, product category, locations, payment methods, operators, members, and cards (multi-select pills matching the existing filter bar style). A "Run report" CTA, a "Hide / Show filters" toggle, a reset button, and an "active filter" chip row. Results render in a clean table with summary KPI tiles, a "Showing 200 of N rows" footer, and a sticky export bar.
+- **Exports** — Every report supports **CSV** (`.csv` download) and **PDF** (opens a print-ready HTML window with the same table + summary, A4 landscape). Both honour the current filters and the table is rendered with `tabular-nums` for clean number alignment.
+- **Visual consistency** — Same `card` surface, `rounded-2xl` borders, `ink-100` palette, and severity-tinted summary tones as the Analytics and Dashboard modules. Numeric values are formatted with the business's currency symbol.
+- **Build status** — `tsc -b && vite build` succeeds. Added `getAllCardDeposits()` to `card-store.ts` (the existing `getCardDeposits` requires a `cardId` and is single-card scoped).
+- Status: 🟢 Complete.
 
 ### 2026-08-31 — POS Screen Notifications
 
