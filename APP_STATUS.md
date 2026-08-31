@@ -75,7 +75,7 @@
 | Activity timeline | 🟢 Complete | New `ActivityEntry` model in `notifications-store`. Recorded automatically from refund / adjust / deposit / card / member flows. Shown on the dedicated Activity tab and on the topbar's audit-style surfaces. |
 | Business settings | 🟢 Complete | All setting groups functional |
 | User Portal | 🟢 Complete | Cardholder dashboard + identification via email or card |
-| **POS location selector** | 🟢 Complete | Topbar + POSNavbar chips let operator pick where they're ringing up |
+| **POS location selector** | 🟢 Complete | Topbar + POSNavbar chips let operator pick where they're ringing up sales. The admin topbar exposes a single **mega context switcher** (`<ContextSwitcher />`) instead of three separate dropdowns: a 2-pane popover with a left rail (Business / Location / User role) and a right pane that swaps to the matching list with built-in search. The `+ New sale` button was removed from the topbar; the user account dropdown now lists `Open POS` (MonitorPlay icon) as the first action, followed by `My profile` and `Settings`. |
 
 ---
 
@@ -109,6 +109,7 @@
 | **LocationsBreakdown** *(new)* | Dashboard widget: revenue per location | 🟢 Complete | |
 | **LocationContext chip** *(new)* | Topbar pill that links to /app/locations | 🟢 Complete | |
 | **Active-location hook** *(new)* | `useActiveLocation()` + `getActiveLocationIdSync()` | 🟢 Complete | Persists choice to localStorage |
+| **ContextSwitcher** *(new)* | Single mega dropdown that combines the Business, Location, and User role switchers. Two-pane popover: left rail (sections) and right pane (searchable list with active highlight, "Manage" link). Replaces the three separate topbar dropdowns to keep the topbar compact. | 🟢 Complete | |
 | **NFCScanExperience** *(new)* | POS membership-card scan flow with state machine (idle/scan/loading/success/error) and manual-entry fallback | 🟢 Complete | Replaces the prior text-based Membership panel on `/app/pos/payment` |
 | **ReceiptDocument** *(new)* | Renders a thermal (80 mm) or standard (A4 / US-letter) receipt for any transaction. Pure presentation — pulled in by `POSReceiptPage` and `ReceiptPreviewModal`. | 🟢 Complete | |
 | **ReceiptPreviewModal** *(new)* | Full-screen modal: thermal / standard layout toggle, zoom, Print, Download (.txt / .html), Email (mailto:), Copy text, New order, ESC + Ctrl/Cmd+P shortcuts. ESC closes. | 🟢 Complete | |
