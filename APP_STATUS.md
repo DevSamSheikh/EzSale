@@ -14,7 +14,7 @@
 | Forgot password | `/forgot` | Reset password request | 🟢 Complete | 🟢 Complete | 🟡 Partial (mocked reset) | AuthShell | Authentication | Reset is a UI stub, no real email/token sent | Real email + token reset flow |
 | Setup Wizard | `/setup` | First-time onboarding for new business | 🟢 Complete | 🟢 Complete | 🟢 Complete | Step components | First-time setup, Onboarding | None | Save progress persistence, multi-business flow |
 | Dashboard | `/app/dashboard` | Home overview, KPIs, recent activity | 🟢 Complete | 🟢 Complete | 🟢 Complete | KpiGrid, SalesChart, LocationsBreakdown | Dashboard, Locations | None | Drill-through from any KPI tile |
-| POS | `/app/pos` | Point of sale — products + cart | 🟢 Complete | 🟢 Complete | 🟢 Complete | ProductCard, CartPanel, POSNavbar | POS, Multi-location | None | Quick reorder, save-as-quotation |
+| POS | `/app/pos` | Point of sale — products + cart | 🟢 Complete | 🟢 Complete | 🟢 Complete | ProductCard, CartPanel, POSNavbar, **POSAlertStrip** | POS, Multi-location, **Notifications** | None | Quick reorder, save-as-quotation |
 | POS Payment | `/app/pos/payment` | Choose method & finalize sale | 🟢 Complete | 🟢 Complete | 🟢 Complete | MemberPicker, CardPanel, **NFCScanExperience** | POS, Payments, Cards, Locations | None | Split-tender, partial deposits |
 | POS Receipt | `/app/pos/receipt/:txnId` | Digital receipt with print/share | 🟢 Complete | 🟢 Complete | 🟢 Complete | ReceiptDocument, **ReceiptPreviewModal** | POS, Receipts, Locations | None | Email/SMS receipt delivery |
 | Products | `/app/products` | Catalog management | 🟢 Complete | 🟢 Complete | 🟢 Complete | ProductCard, Editor drawer | Products, Categories, Inventory | None | Bulk import (CSV) |
@@ -22,6 +22,7 @@
 | Orders | `/app/orders` | Sales history with detail drawer | 🟢 Complete | 🟢 Complete | 🟢 Complete | OrdersTable, OrderDetailsDrawer | Orders, Refunds, Locations, Cards | None | Bulk export with all columns |
 | Users | `/app/users` | Member/customer list | 🟢 Complete | 🟢 Complete | 🟢 Complete | UserCard, Filters | Customers, Cards | None | Bulk invite via CSV |
 | User Details | `/app/users/:memberId` | Single member profile | 🟢 Complete | 🟢 Complete | 🟢 Complete | Tabs (Profile, Cards, Activity) | Customers, Cards | None | "Impersonate member" for support |
+| **Notifications & Activity** *(new)* | `/app/notifications` | Admin notification center + activity timeline | 🟢 Complete | 🟢 Complete | 🟢 Complete | NotificationsPage, NotificationDropdown, **TopbarNotifications** | Notifications, Activity | None | Server-side email / push, snooze |
 | Cards | `/app/cards` | Membership card grid | 🟢 Complete | 🟢 Complete | 🟢 Complete | CardTile, Filters | NFC Cards, Multi-location | None | NFC UID collision re-check |
 | Card Details | `/app/cards/:cardId` | Single card profile & activity | 🟢 Complete | 🟢 Complete | 🟢 Complete | Tabs (Activity, Txns, Deposits) | NFC Cards | None | Card-replacement flow polish |
 | Deposits | `/app/deposits` | Card top-up records | 🟢 Complete | 🟢 Complete | 🟢 Complete | DepositsTable | Payments, Cards | None | Real deposit-provider integration |
@@ -70,7 +71,8 @@
 | Multi-Location (POS tagging) | 🟢 Complete | Active-location context stored; new transactions stamped with locationId and (optional) terminalId |
 | Cross-location cards (settings) | 🟢 Complete | `cardsUsableAcrossLocations` toggle + per-location `acceptsSharedCards` override |
 | Roles & permissions | 🟢 Complete | 6 default roles, full CRUD, staff can be assigned to locations |
-| Notifications | 🟡 In Progress | Topbar shows a static list; no real subscription model |
+| Notifications | 🟢 Complete | New in-app notification system backed by `notifications-store`. Admins receive notifications for new deposit requests, low card balances, card expiry, refunds (full + partial), manual adjustments, new members, successful membership card sales, and system events. Members receive notifications for deposit status changes, card charges (with new balance), card status changes (activated/deactivated/blocked/lost), and low-balance / expiry warnings. Bell icon in topbar with unread count badge. Dedicated `/app/notifications` page with two tabs (Notifications / Activity timeline), severity / category / read-state filters, search, mark-all-read, clear-all, deep links to the related entity. Real-time updates via `useNotificationsTick()` + `storage` events. Health checks (`runCardHealthChecks`) detect low balance / expiring cards on mount and emit deduped alerts. Activity timeline records card issuance, deposit requests, refunds, adjustments, card status changes, and configuration updates with operator attribution. **POS screen also gets notifications** via (1) a real `TopbarNotifications` bell in `POSNavbar` with the same unread count / dropdown, (2) a `POSAlertStrip` pinned under the navbar that surfaces up to 3 high-priority unread alerts (low balance, deposit requests, refunds, card status) with severity colour, and (3) a live toast that fires when a new high-signal notification arrives (e.g. a deposit request or refund) so the operator sees the event even when the dropdown is closed. |
+| Activity timeline | 🟢 Complete | New `ActivityEntry` model in `notifications-store`. Recorded automatically from refund / adjust / deposit / card / member flows. Shown on the dedicated Activity tab and on the topbar's audit-style surfaces. |
 | Business settings | 🟢 Complete | All setting groups functional |
 | User Portal | 🟢 Complete | Cardholder dashboard + identification via email or card |
 | **POS location selector** | 🟢 Complete | Topbar + POSNavbar chips let operator pick where they're ringing up |
@@ -110,6 +112,8 @@
 | **NFCScanExperience** *(new)* | POS membership-card scan flow with state machine (idle/scan/loading/success/error) and manual-entry fallback | 🟢 Complete | Replaces the prior text-based Membership panel on `/app/pos/payment` |
 | **ReceiptDocument** *(new)* | Renders a thermal (80 mm) or standard (A4 / US-letter) receipt for any transaction. Pure presentation — pulled in by `POSReceiptPage` and `ReceiptPreviewModal`. | 🟢 Complete | |
 | **ReceiptPreviewModal** *(new)* | Full-screen modal: thermal / standard layout toggle, zoom, Print, Download (.txt / .html), Email (mailto:), Copy text, New order, ESC + Ctrl/Cmd+P shortcuts. ESC closes. | 🟢 Complete | |
+| **NotificationDropdown** *(new)* | Topbar bell with unread count, severity-bordered rows, All / Unread filter, mark-all-read, deep-links. Standalone `TopbarNotifications` exports a button + dropdown for the topbar. | 🟢 Complete | |
+| **POSAlertStrip** *(new)* | Horizontally-scrolling alert strip pinned to the top of the POS screen. Surfaces up to 3 high-priority unread notifications (deposit requests, low balance, refunds, card status) with severity colour, dismissable, click-to-mark-read. | 🟢 Complete | |
 
 ---
 
@@ -247,7 +251,7 @@
 |----|------|-------|----------|
 | ISSUE-001 | Reports | "Run report" buttons are placeholders | Medium |
 | ISSUE-002 | Auth | Password reset is a UI stub (no email/token) | High |
-| ISSUE-003 | Notifications | Bell shows a static list; no real subscription engine | Low |
+| ISSUE-003 | Notifications | Bell shows a static list; no real subscription engine | Resolved 2026-08-31 (see Notifications & Activity Center entry) |
 | ISSUE-004 | Inventory | Stock thresholds tracked; no reorder / purchase-order workflow | Medium |
 | ISSUE-005 | Error UX | Native `window.confirm` / `window.prompt` for destructive actions (terminal add, location delete) | Low |
 | ISSUE-006 | Loading states | No skeletons or explicit loading affordances (acceptable because data is local) | Low |
@@ -267,6 +271,29 @@
 ## 8. Change Log
 
 > Most recent first.
+
+### 2026-08-31 — POS Screen Notifications
+
+- **`POSNavbar` bell** — Replaced the static `<Bell>` button with the live `TopbarNotifications` component, so the operator sees the same unread count + dropdown that admins get, with the same deep-links.
+- **`POSAlertStrip` component** — A new horizontally-scrolling strip pinned to the top of the POS screen (`src\components\POSAlertStrip.tsx`). Surfaces the top 3 unread notifications filtered to operator-relevant categories (deposit_request, deposit_status, low_balance, card_expiry, card_status, transaction, refund, membership). Each card is severity-coloured (info / success / warning / critical), clickable to mark read + open the deep-link (or stay on the POS for non-critical items), and has an explicit dismiss button. A "View all" button on the right deep-links into the admin notification center.
+- **POS-side live toast** — `POSPage` now subscribes to the notifications store via `useNotificationsTick()` and fires the existing bottom-of-screen toast whenever a high-signal notification arrives (deposit request, deposit status, low balance, refund). The toast timeout was bumped from 1.5s → 3.5s so operators have time to read it. A `seenNotifRef` dedupes per id so a notification only toasts once per session. Audio cue is wired: critical → error cue, success → success cue, others → tap.
+- **Build status** — `tsc -b && vite build` succeeds; no type errors.
+- Status: 🟢 Complete.
+
+### 2026-08-31 — Notifications & Activity Center
+
+- **Data model** — Added `Notification`, `NotificationCategory` (deposit_request, deposit_status, low_balance, card_expiry, card_status, transaction, refund, membership, system, user), `NotificationSeverity` (info / success / warning / critical), `ActivityEntry`, `ActivityCategory`, `ActivitySeverity`, and `NotificationAudience` (admin / member) to `types.ts`. New `PermissionKey` member `notifications.view` and a new `notifications` permission group.
+- **Store** — `src/notifications-store.ts` is the single source of truth. CRUD: `notify()`, `markNotificationRead()`, `markAllAdminRead()`, `markAllMemberRead()`, `clearAllAdmin()`, `clearAllMember()`, `deleteNotification()`. Activity: `logActivity()`. React hook `useNotificationsTick()` re-renders on storage / custom events. Seeded with realistic admin + activity examples on first load.
+- **Hooks into existing flows** — `card-store.ts` now fires admin + member notifications for: new member, new deposit request, deposit approved / rejected / cancelled, card activated / deactivated / blocked / lost, low balance (auto-deduped), card expiring (auto-deduped). `orders-store.ts` fires admin + member notifications for refunds (full / partial) and manual adjustments. `POSPaymentPage` fires admin + member notifications for successful membership card charges, including the new balance.
+- **Topbar dropdown** — Replaced the static stub with a real `NotificationDropdown` driven by the store. Unread count badge, severity colour-coding, All / Unread filter, mark-all-read, deep-link rows.
+- **Dedicated page** — New `/app/notifications` page (`NotificationsPage.tsx`) with two tabs:
+  - **Notifications** — search, severity / category / read-state filter chips, mark-all-read, clear-all, per-row View (deep-links + marks read) and Delete.
+  - **Activity timeline** — vertical timeline with category-aware icons, severity colour, search, severity filter.
+  - KPI tiles (unread, critical, new today, total activity). Auto-runs `runCardHealthChecks()` on mount.
+- **User portal** — `PortalDashboardPage.tsx` now shows a "Recent activity" block on the Overview tab, sourced from the same store. Auto-marks all member notifications as read 1.5s after the portal opens.
+- **Nav & permissions** — New `Notifications` sidebar link with the `Bell` icon. New `permissions.ts` mapping `notifications.view → /app/notifications`.
+- **Build status** — `tsc -b && vite build` succeeds; no type errors. Resolved two existing import-cycle risks: the activity helper in `card-store.ts` is aliased to `recordActivity` to avoid colliding with the file's own internal card-activity logger; the public `runHealthChecks` shim in `notifications-store.ts` defers to `runCardHealthChecks` in `card-store.ts`.
+- Status: 🟢 Complete.
 
 ### 2026-08-31 — Receipts & Printing
 

@@ -668,6 +668,26 @@ export function createMember(input: NewMemberInput, by: string = 'admin@ezsale.a
   all.unshift(member)
   saveMembers(all)
   logMemberActivity(member.id, 'created', `Account created for ${member.name}.`, { by })
+  try {
+    notify({
+      audience: 'admin',
+      category: 'user',
+      severity: 'info',
+      title: 'New member enrolled',
+      body: `${member.name} joined${member.type === 'corporate' ? ' as a corporate member' : ''}.`,
+      href: '/app/users',
+      memberId: member.id,
+    })
+    recordActivity({
+      category: 'member',
+      severity: 'info',
+      title: 'Member created',
+      body: `${member.name} (${member.type})`,
+      memberId: member.id,
+    })
+  } catch {
+    /* best-effort */
+  }
   return member
 }
 
@@ -893,13 +913,19 @@ export function createCard(input: NewCardInput, by: string = 'admin@ezsale.app')
 
 export function activateCard(cardId: string, by: string = 'admin@ezsale.app'): MembershipCard | null {
   const next = updateCard(cardId, { status: 'active' })
-  if (next) logActivity(cardId, 'activated', 'Card activated.', { by })
+  if (next) {
+    logActivity(cardId, 'activated', 'Card activated.', { by })
+    notifyCardStatusChange(next, 'activated', by)
+  }
   return next
 }
 
 export function deactivateCard(cardId: string, by: string = 'admin@ezsale.app'): MembershipCard | null {
   const next = updateCard(cardId, { status: 'inactive' })
-  if (next) logActivity(cardId, 'deactivated', 'Card deactivated.', { by })
+  if (next) {
+    logActivity(cardId, 'deactivated', 'Card deactivated.', { by })
+    notifyCardStatusChange(next, 'deactivated', by)
+  }
   return next
 }
 
@@ -909,7 +935,10 @@ export function blockCard(
   by: string = 'admin@ezsale.app',
 ): MembershipCard | null {
   const next = updateCard(cardId, { status: 'blocked' })
-  if (next) logActivity(cardId, 'blocked', `Card blocked — ${reason}.`, { by })
+  if (next) {
+    logActivity(cardId, 'blocked', `Card blocked — ${reason}.`, { by })
+    notifyCardStatusChange(next, 'blocked', by, reason)
+  }
   return next
 }
 
@@ -918,7 +947,10 @@ export function markLost(
   by: string = 'admin@ezsale.app',
 ): MembershipCard | null {
   const next = updateCard(cardId, { status: 'lost' })
-  if (next) logActivity(cardId, 'lost', 'Card reported lost.', { by })
+  if (next) {
+    logActivity(cardId, 'lost', 'Card reported lost.', { by })
+    notifyCardStatusChange(next, 'lost', by)
+  }
   return next
 }
 
@@ -1250,6 +1282,8 @@ export function createDepositRequest(
     requestedBy: input.requestedBy ?? 'self',
   }
   persistDepositRequest(request)
+  // Notify admins that a new deposit request is awaiting review.
+  notifyAdminForDepositRequest(request, card)
   return { request }
 }
 
@@ -1286,6 +1320,7 @@ export function approveDepositRequest(
     resultingTransactionId: txn?.id,
   })
   if (!updated) return null
+  notifyDepositRequestStatus(updated, 'completed', by)
   return { request: updated, deposit: result.deposit, transaction: txn as Transaction }
 }
 
@@ -1296,12 +1331,14 @@ export function rejectDepositRequest(
 ): DepositRequest | null {
   const req = getDepositRequest(id)
   if (!req || req.status !== 'pending') return null
-  return patchDepositRequest(id, {
+  const updated = patchDepositRequest(id, {
     status: 'rejected',
     reviewedAt: new Date().toISOString(),
     reviewedBy: by,
     rejectionReason: reason.trim() || 'No reason provided',
   })
+  if (updated) notifyDepositRequestStatus(updated, 'rejected', by, reason)
+  return updated
 }
 
 export function cancelDepositRequest(
@@ -1310,11 +1347,13 @@ export function cancelDepositRequest(
 ): DepositRequest | null {
   const req = getDepositRequest(id)
   if (!req || req.status !== 'pending') return null
-  return patchDepositRequest(id, {
+  const updated = patchDepositRequest(id, {
     status: 'cancelled',
     reviewedAt: new Date().toISOString(),
     reviewedBy: by,
   })
+  if (updated) notifyDepositRequestStatus(updated, 'cancelled', by)
+  return updated
 }
 
 export function depositRequestStatusLabel(s: DepositRequestStatus): string {
@@ -1345,5 +1384,241 @@ export function depositRequestStatusTone(
       return { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' }
     case 'cancelled':
       return { bg: 'bg-ink-100', text: 'text-ink-700', border: 'border-ink-200' }
+  }
+}
+
+// ---- Notification wiring -------------------------------------------------
+// These helpers stay in this file so the rest of the app reads them via
+// the same store they already use. The notifications-store imports nothing
+// from this file, so there is no cycle.
+
+import { logActivity as recordActivity, notify, type LogActivityInput, type NotifyInput } from './notifications-store'
+
+function fmtMoney(n: number) {
+  return `$${n.toFixed(2)}`
+}
+
+function notifyAdminForDepositRequest(req: DepositRequest, card: MembershipCard) {
+  try {
+    const member = getMember(req.memberId)
+    notify({
+      audience: 'admin',
+      category: 'deposit_request',
+      severity: 'info',
+      title: 'New deposit request',
+      body: `${member?.name ?? 'A member'} requested ${fmtMoney(req.amount)} via ${req.method}.`,
+      href: '/app/deposit-requests',
+      cardId: req.cardId,
+      depositRequestId: req.id,
+      memberId: req.memberId,
+    })
+    recordActivity({
+      category: 'transaction',
+      severity: 'info',
+      title: 'Deposit request created',
+      body: `${fmtMoney(req.amount)} via ${req.method} on card ${card.cardNumber}.`,
+      cardId: card.id,
+      memberId: req.memberId,
+    })
+  } catch {
+    /* notifications are best-effort */
+  }
+}
+
+function notifyDepositRequestStatus(
+  req: DepositRequest,
+  status: 'completed' | 'rejected' | 'cancelled',
+  by: string,
+  reason?: string,
+) {
+  try {
+    const member = getMember(req.memberId)
+    const card = getCard(req.cardId)
+    const statusLabel =
+      status === 'completed'
+        ? 'approved and credited'
+        : status === 'rejected'
+        ? 'rejected'
+        : 'cancelled'
+    const severity: 'success' | 'warning' =
+      status === 'completed' ? 'success' : 'warning'
+    // Notify the member
+    notify({
+      audience: 'member',
+      memberId: req.memberId,
+      category: 'deposit_status',
+      severity,
+      title: `Deposit request ${statusLabel}`,
+      body:
+        status === 'completed'
+          ? `Your top-up of ${fmtMoney(req.amount)} has been credited to ${card?.cardNumber ?? 'your card'}.`
+          : status === 'rejected'
+          ? `Your top-up of ${fmtMoney(req.amount)} was rejected${reason ? `: ${reason}` : '.'}`
+          : `Your top-up of ${fmtMoney(req.amount)} was cancelled.`,
+      cardId: req.cardId,
+      depositRequestId: req.id,
+    })
+    recordActivity({
+      category: 'transaction',
+      severity,
+      title: `Deposit request ${statusLabel}`,
+      body: `${member?.name ?? 'Member'} · ${fmtMoney(req.amount)} · by ${by}`,
+      cardId: req.cardId,
+      memberId: req.memberId,
+    })
+  } catch {
+    /* best-effort */
+  }
+}
+
+function notifyCardStatusChange(
+  card: MembershipCard,
+  status: 'activated' | 'deactivated' | 'blocked' | 'lost',
+  by: string,
+  reason?: string,
+) {
+  try {
+    if (card.memberId) {
+      const memberName = getMember(card.memberId)?.name ?? 'Member'
+      const titles: Record<typeof status, string> = {
+        activated: 'Your card is active again',
+        deactivated: 'Your card was deactivated',
+        blocked: `Your card was blocked${reason ? `: ${reason}` : ''}`,
+        lost: 'Your card was reported lost',
+      }
+      const bodies: Record<typeof status, string> = {
+        activated: `Card ${card.cardNumber} is ready to use.`,
+        deactivated: `Card ${card.cardNumber} has been temporarily deactivated.`,
+        blocked: `Card ${card.cardNumber} cannot be used at the till. Contact support to unblock.`,
+        lost: `Card ${card.cardNumber} is permanently disabled. Please request a replacement.`,
+      }
+      const severity: 'success' | 'warning' | 'critical' =
+        status === 'activated' ? 'success' : status === 'blocked' || status === 'lost' ? 'critical' : 'warning'
+      notify({
+        audience: 'member',
+        memberId: card.memberId,
+        category: 'card_status',
+        severity,
+        title: titles[status],
+        body: bodies[status],
+        cardId: card.id,
+      })
+    }
+    recordActivity({
+      category: 'card',
+      severity: 'warning',
+      title: `Card ${status}`,
+      body: `${card.cardNumber} · by ${by}${reason ? ` — ${reason}` : ''}`,
+      cardId: card.id,
+      memberId: card.memberId ?? undefined,
+    })
+  } catch {
+    /* best-effort */
+  }
+}
+
+// Type aliases re-exported for convenience (used elsewhere).
+export type { NotifyInput, LogActivityInput }
+
+// ---- Card health checks (low balance / expiry) ------------------------
+
+const LOW_BALANCE_DEDUPE_KEY = (cardId: string) => `ezsale:notif:low-balance:${cardId}`
+const EXPIRY_DEDUPE_KEY = (cardId: string, bucket: number) =>
+  `ezsale:notif:expiry:${cardId}:${bucket}`
+
+/**
+ * Inspect every active card, generate a low-balance / expiring-soon
+ * notification the first time the threshold is crossed, and use
+ * localStorage flags to avoid spamming the dropdown.
+ *
+ * Idempotent — safe to call from anywhere (topbar, dashboard, cards page).
+ */
+export function runCardHealthChecks(opts?: {
+  lowBalanceThreshold?: number
+  expiryWindowDays?: number
+  force?: boolean
+}) {
+  if (typeof window === 'undefined') return
+  const lowAt = opts?.lowBalanceThreshold ?? 10
+  const expiryWindow = opts?.expiryWindowDays ?? 30
+  const now = Date.now()
+  const HOUR = 60 * 60 * 1000
+  const DAY = 24 * HOUR
+
+  const cards = getCards()
+  for (const c of cards) {
+    if (c.status !== 'active') continue
+    if (c.balance < lowAt) {
+      const flag = LOW_BALANCE_DEDUPE_KEY(c.id)
+      const last = Number(localStorage.getItem(flag) ?? 0)
+      const owner = c.memberId ? getMember(c.memberId) : null
+      if (opts?.force || !last || now - last > 12 * HOUR) {
+        localStorage.setItem(flag, String(now))
+        notify({
+          audience: 'admin',
+          category: 'low_balance',
+          severity: 'warning',
+          title: 'Low card balance',
+          body: `${c.cardNumber}${owner ? ` (${owner.name})` : ''} is below the $${lowAt} low-balance threshold.`,
+          href: '/app/cards',
+          cardId: c.id,
+          memberId: c.memberId ?? undefined,
+        })
+        if (owner) {
+          notify({
+            audience: 'member',
+            memberId: owner.id,
+            category: 'low_balance',
+            severity: 'warning',
+            title: 'Your card balance is low',
+            body: `Card ${c.cardNumber} is below the $${lowAt} threshold. Top up to keep using it.`,
+            cardId: c.id,
+          })
+        }
+        recordActivity({
+          category: 'card',
+          severity: 'warning',
+          title: 'Low card balance detected',
+          body: `${c.cardNumber} · $${c.balance.toFixed(2)}`,
+          cardId: c.id,
+          memberId: c.memberId ?? undefined,
+        })
+      }
+    }
+
+    const expiresAt = new Date(c.expiresAt).getTime()
+    if (Number.isFinite(expiresAt)) {
+      const daysLeft = Math.ceil((expiresAt - now) / DAY)
+      if (daysLeft > 0 && daysLeft <= expiryWindow) {
+        const bucket = daysLeft <= 7 ? 7 : 30
+        const flag = EXPIRY_DEDUPE_KEY(c.id, bucket)
+        const last = Number(localStorage.getItem(flag) ?? 0)
+        if (opts?.force || !last || now - last > 24 * HOUR) {
+          localStorage.setItem(flag, String(now))
+          const owner = c.memberId ? getMember(c.memberId) : null
+          notify({
+            audience: 'admin',
+            category: 'card_expiry',
+            severity: daysLeft <= 7 ? 'critical' : 'warning',
+            title: 'Card expiring soon',
+            body: `${c.cardNumber}${owner ? ` (${owner.name})` : ''} expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`,
+            href: '/app/cards',
+            cardId: c.id,
+            memberId: c.memberId ?? undefined,
+          })
+          if (owner) {
+            notify({
+              audience: 'member',
+              memberId: owner.id,
+              category: 'card_expiry',
+              severity: 'warning',
+              title: `Your card expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`,
+              body: `Card ${c.cardNumber} · renew before ${new Date(c.expiresAt).toLocaleDateString()} to keep your benefits.`,
+              cardId: c.id,
+            })
+          }
+        }
+      }
+    }
   }
 }

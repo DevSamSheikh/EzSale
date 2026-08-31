@@ -161,6 +161,18 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: 'settings.manage', label: 'Change settings' },
     ],
   },
+  {
+    id: 'notifications',
+    label: 'Notifications',
+    description: 'Notification center, activity timeline, and system events.',
+    permissions: [
+      {
+        key: 'notifications.view',
+        label: 'View notifications & activity',
+        description: 'See the notification center and the activity timeline.',
+      },
+    ],
+  },
 ]
 
 /** Flat list of every permission key — useful for "select all" toggles. */
@@ -289,4 +301,5 @@ export const PERMISSION_TO_NAV: Record<string, string> = {
   'settings.view': '/app/settings',
   'staff.view': '/app/staff',
   'settings.manage': '/app/locations',
+  'notifications.view': '/app/notifications',
 }

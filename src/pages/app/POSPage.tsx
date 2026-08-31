@@ -32,6 +32,8 @@ import {
 } from '../../categories-store'
 import { getBusiness } from '../../store'
 import { POSNavbar } from '../../components/POSNavbar'
+import { POSAlertStrip, posToastForNotification } from '../../components/POSAlertStrip'
+import { getAdminNotifications, useNotificationsTick } from '../../notifications-store'
 import { playCue } from '../../audio'
 
 type PromoId = 'none' | 'default' | 'first5' | 'weekend' | 'custom'
@@ -635,9 +637,44 @@ export default function POSPage() {
 
   useEffect(() => {
     if (!toast) return
-    const t = setTimeout(() => setToast(null), 1500)
+    const t = setTimeout(() => setToast(null), 3500)
     return () => clearTimeout(t)
   }, [toast])
+
+  // ---- Live notification subscription -------------------------------
+  // Surface admin notifications that are relevant to the POS operator
+  // (new deposit requests, low balance, refunds, etc.) as a toast so
+  // the operator sees the alert even when the bell dropdown is closed.
+  // We track which ids we've already toasted so we don't re-fire on every
+  // tick.
+  const seenNotifRef = useRef<Set<string>>(new Set())
+  const notifTick = useNotificationsTick()
+  useEffect(() => {
+    const list = getAdminNotifications()
+    list.forEach((n) => {
+      if (seenNotifRef.current.has(n.id)) return
+      seenNotifRef.current.add(n.id)
+      // Only fire toasts for high-signal categories that an operator would
+      // care about at the till.
+      if (
+        n.category === 'deposit_request' ||
+        n.category === 'deposit_status' ||
+        n.category === 'low_balance' ||
+        n.category === 'refund'
+      ) {
+        setToast(posToastForNotification(n))
+        if (n.severity === 'critical') playCue('error')
+        else if (n.severity === 'success') playCue('success')
+        else playCue('tap')
+      }
+    })
+    // Forget old ids so we don't grow unbounded.
+    if (seenNotifRef.current.size > 100) {
+      const next = new Set<string>()
+      list.slice(0, 30).forEach((n) => next.add(n.id))
+      seenNotifRef.current = next
+    }
+  }, [notifTick])
 
   const categories = useMemo(() => {
     // Union of categories the admin configured + categories that actually
@@ -769,6 +806,8 @@ export default function POSPage() {
     <div className="min-h-screen bg-ink-50 px-3 py-3 sm:px-5 sm:py-5">
       <div className="mx-auto flex h-[calc(100dvh-1.5rem)] max-w-[1400px] flex-col gap-4">
         <POSNavbar />
+
+        <POSAlertStrip max={3} />
 
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_400px]">
           {/* Products panel */}

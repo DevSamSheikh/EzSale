@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import {
-  Bell,
   Building2,
   ChevronDown,
   ChevronRight,
@@ -20,6 +19,7 @@ import { Logo } from './Primitives'
 import { NavIcon } from './NavIcon'
 import { BusinessTypeIcon } from '../icons'
 import { GlobalSearchMenu } from './GlobalSearchMenu'
+import { TopbarNotifications } from './NotificationDropdown'
 import { BUSINESS_TYPES, getBusiness, getAuth, clearAuth, NAV_LINKS } from '../store'
 import {
   getCurrentOperator,
@@ -57,7 +57,6 @@ export function Topbar({
   const [locOpen, setLocOpen] = useState(false)
 
   const bizRef = useRef<HTMLDivElement | null>(null)
-  const notifRef = useRef<HTMLDivElement | null>(null)
   const userRef = useRef<HTMLDivElement | null>(null)
   const operatorRef = useRef<HTMLDivElement | null>(null)
   const locRef = useRef<HTMLDivElement | null>(null)
@@ -68,7 +67,6 @@ export function Topbar({
   useEffect(() => {
     function onDoc(e: MouseEvent) {
       if (bizRef.current && !bizRef.current.contains(e.target as Node)) setBizOpen(false)
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false)
       if (userRef.current && !userRef.current.contains(e.target as Node)) setUserOpen(false)
       if (operatorRef.current && !operatorRef.current.contains(e.target as Node)) setOperatorOpen(false)
       if (locRef.current && !locRef.current.contains(e.target as Node)) setLocOpen(false)
@@ -374,36 +372,11 @@ export function Topbar({
         </button>
 
         {/* Notifications */}
-        <div ref={notifRef} className="relative">
-          <button
-            onClick={() => setNotifOpen((o) => !o)}
-            className="relative rounded-xl p-2 text-ink-600 hover:bg-ink-100"
-            aria-label="Notifications"
-          >
-            <Bell className="h-5 w-5" />
-            <span className="absolute right-1.5 top-1.5 inline-block h-2 w-2 rounded-full bg-brand-500" />
-          </button>
-          {notifOpen && (
-            <div className="absolute right-0 top-full z-40 mt-2 w-80 rounded-2xl border border-ink-100 bg-white p-2 shadow-pop">
-              <div className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-ink-400">
-                Notifications
-              </div>
-              {[
-                { t: 'Low stock alert', d: '5 items are below their reorder threshold.', s: '2m' },
-                { t: 'New member signed up', d: 'Sara Khan enrolled with the Gold card.', s: '15m' },
-                { t: 'Daily summary ready', d: 'Yesterday’s report is available to view.', s: '1h' },
-              ].map((n, i) => (
-                <div key={i} className="rounded-xl px-2 py-2 hover:bg-ink-50">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold text-ink-900">{n.t}</div>
-                    <div className="text-xs text-ink-400">{n.s}</div>
-                  </div>
-                  <div className="text-xs text-ink-500">{n.d}</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <TopbarNotifications
+          open={notifOpen}
+          onOpenChange={setNotifOpen}
+          onOpenAll={() => navigate('/app/notifications')}
+        />
 
         {/* User menu */}
         <div ref={userRef} className="relative">

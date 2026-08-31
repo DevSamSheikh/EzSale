@@ -17,7 +17,8 @@ import {
   getTransactions,
   setTransactionStatus as setTxnStatus,
 } from './payment-store'
-import { getCards, getCard } from './card-store'
+import { getCards, getCard, getMember } from './card-store'
+import { logActivity as recordActivity, notify as fireNotification } from './notifications-store'
 
 const KEY_LOCATIONS = 'ezsale:locations'
 const KEY_FIN_EVENTS = 'ezsale:financial-events'
@@ -166,6 +167,11 @@ function uid(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.floor(Math.random() * 1000)
     .toString(36)
     .padStart(2, '0')}`
+}
+
+function formatRefundAmount(n: number) {
+  const sign = n < 0 ? '−' : ''
+  return `${sign}$${Math.abs(n).toFixed(2)}`
 }
 
 function ensureSeeded() {
@@ -529,6 +535,42 @@ export function refundTransaction(
   const nextStatus: TransactionStatus = isFull ? 'refunded' : 'partially_refunded'
   setTxnStatus(parent.id, nextStatus)
 
+  // Notify admins + member (if attached)
+  try {
+    const member = parent.memberId ? getMember(parent.memberId) : null
+    fireNotification({
+      audience: 'admin',
+      category: 'refund',
+      severity: isFull ? 'info' : 'warning',
+      title: isFull ? 'Refund processed' : 'Partial refund processed',
+      body: `${member?.name ?? 'Order'} ${parent.id} · ${formatRefundAmount(amount)}${input.reason ? ` — ${input.reason}` : ''}`,
+      href: '/app/orders',
+      transactionId: parent.id,
+      memberId: parent.memberId,
+    })
+    if (parent.memberId) {
+      fireNotification({
+        audience: 'member',
+        memberId: parent.memberId,
+        category: 'transaction',
+        severity: 'info',
+        title: isFull ? 'Refund issued' : 'Partial refund issued',
+        body: `${formatRefundAmount(amount)} was refunded on order ${parent.id}.${input.reason ? ` Reason: ${input.reason}` : ''}`,
+        transactionId: parent.id,
+      })
+    }
+    recordActivity({
+      category: 'refund',
+      severity: isFull ? 'warning' : 'info',
+      title: isFull ? 'Issued full refund' : 'Issued partial refund',
+      body: `Order ${parent.id} · ${formatRefundAmount(amount)}${input.reason ? ` — ${input.reason}` : ''}`,
+      transactionId: parent.id,
+      memberId: parent.memberId,
+    })
+  } catch {
+    /* best-effort */
+  }
+
   return {
     event,
     childTxn: child,
@@ -570,6 +612,31 @@ export function adjustTransaction(
     by,
   })
   setTxnStatus(parent.id, 'adjusted')
+
+  try {
+    const member = parent.memberId ? getMember(parent.memberId) : null
+    fireNotification({
+      audience: 'admin',
+      category: 'transaction',
+      severity: 'info',
+      title: 'Manual adjustment recorded',
+      body: `Order ${parent.id} · ${member?.name ?? 'Walk-in'} · ${formatRefundAmount(input.amount)}${input.reason ? ` — ${input.reason}` : ''}`,
+      href: '/app/orders',
+      transactionId: parent.id,
+      memberId: parent.memberId,
+    })
+    recordActivity({
+      category: 'transaction',
+      severity: 'info',
+      title: 'Manual adjustment recorded',
+      body: `Order ${parent.id} · ${formatRefundAmount(input.amount)}${input.reason ? ` — ${input.reason}` : ''}`,
+      transactionId: parent.id,
+      memberId: parent.memberId,
+    })
+  } catch {
+    /* best-effort */
+  }
+
   return { event, parent: { ...parent, status: 'adjusted' } }
 }
 

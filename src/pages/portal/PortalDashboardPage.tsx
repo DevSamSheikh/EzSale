@@ -4,8 +4,10 @@ import {
   AlertTriangle,
   ArrowDownToLine,
   ArrowUpRight,
+  Bell,
   Building2,
   Calendar,
+  CalendarClock,
   CheckCircle2,
   ChevronRight,
   Clock,
@@ -52,6 +54,11 @@ import {
 } from '../../card-store'
 import { getTransactions, paymentMethodLabel } from '../../payment-store'
 import { getBusiness } from '../../store'
+import {
+  getMemberNotifications,
+  markAllMemberRead,
+  useNotificationsTick,
+} from '../../notifications-store'
 import { StatCard, type StatTone } from '../../components/Primitives'
 import {
   billingCategoryLabel,
@@ -72,6 +79,7 @@ import type {
   DepositRequest,
   DepositRequestStatus,
   MembershipCard,
+  Notification,
   Transaction,
 } from '../../types'
 import { playCue } from '../../audio'
@@ -113,6 +121,7 @@ export default function PortalDashboardPage() {
 
   const [member, setMember] = useState(getMemberBySlug(slug))
   const [tab, setTab] = useState<Tab>('overview')
+  const notifTick = useNotificationsTick()
   const [topupOpen, setTopupOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
 
@@ -120,16 +129,35 @@ export default function PortalDashboardPage() {
     setMember(getMemberBySlug(slug))
   }, [slug])
 
+  const cards = useMemo(() => (member ? getCardsByMember(member.id) : []), [member])
+  const primary = cards[0]
+  const totalBalance = useMemo(() => cards.reduce((s, c) => s + c.balance, 0), [cards])
+  const memberTier = useMemo(() => (member ? getMemberTier(member.id) : 'Bronze'), [member, cards])
+  const memberNotifications = useMemo(
+    () => (member ? getMemberNotifications(member.id) : []),
+    [member, notifTick],
+  )
+  const unreadNotifs = useMemo(
+    () => memberNotifications.filter((n) => !n.read).length,
+    [memberNotifications],
+  )
+
+  // Auto-mark all member notifications as read once the portal is opened.
+  // (They've "seen" the inbox on the dashboard.)
+  useEffect(() => {
+    if (member && unreadNotifs > 0) {
+      // Defer a tick so we don't fight the initial read in the same render.
+      const t = setTimeout(() => markAllMemberRead(member.id), 1500)
+      return () => clearTimeout(t)
+    }
+    return
+  }, [member?.id, unreadNotifs])
+
   useEffect(() => {
     if (!toast) return
     const t = setTimeout(() => setToast(null), 2400)
     return () => clearTimeout(t)
   }, [toast])
-
-  const cards = useMemo(() => (member ? getCardsByMember(member.id) : []), [member])
-  const primary = cards[0]
-  const totalBalance = useMemo(() => cards.reduce((s, c) => s + c.balance, 0), [cards])
-  const memberTier = useMemo(() => (member ? getMemberTier(member.id) : 'Bronze'), [member, cards])
 
   const deposits = useMemo(() => {
     if (!member) return [] as CardDeposit[]
@@ -330,6 +358,8 @@ export default function PortalDashboardPage() {
             deposits={deposits}
             stats={stats}
             memberTier={memberTier}
+            memberNotifications={memberNotifications}
+            unreadNotifs={unreadNotifs}
           />
         )}
         {tab === 'transactions' && <BillingHistoryTab entries={billingEntries} />}
@@ -458,6 +488,8 @@ function OverviewTab({
   deposits,
   stats,
   memberTier,
+  memberNotifications,
+  unreadNotifs,
 }: {
   member: ReturnType<typeof getMember>
   cards: MembershipCard[]
@@ -466,6 +498,8 @@ function OverviewTab({
   deposits: CardDeposit[]
   stats: { totalSpent: number; totalTopUps: number; thisMonthSpent: number; txnCount: number }
   memberTier: string
+  memberNotifications: Notification[]
+  unreadNotifs: number
 }) {
   if (!member) return null
   return (
@@ -532,6 +566,57 @@ function OverviewTab({
           label="Charges"
           value={String(stats.txnCount)}
         />
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-sm font-bold text-ink-900">Recent activity</div>
+          {memberNotifications.length > 0 && (
+            <span className="text-[11px] text-ink-500">
+              {unreadNotifs > 0 ? `${unreadNotifs} unread` : 'All caught up'}
+            </span>
+          )}
+        </div>
+        {memberNotifications.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-ink-200 bg-ink-50/40 p-5 text-center text-xs text-ink-500">
+            Nothing new. We'll let you know when something changes.
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {memberNotifications.slice(0, 4).map((n) => {
+              const sev =
+                n.severity === 'critical' || n.severity === 'warning'
+                  ? 'rose'
+                  : n.severity === 'success'
+                  ? 'emerald'
+                  : 'ink'
+              return (
+                <Row
+                  key={n.id}
+                  title={n.title}
+                  subtitle={n.body}
+                  meta={formatDateTime(n.createdAt)}
+                  value={n.read ? '·' : 'New'}
+                  valueTone={n.read ? 'text-ink-400' : 'text-brand-700'}
+                  Icon={
+                    n.category === 'transaction'
+                      ? Receipt
+                      : n.category === 'card_expiry'
+                      ? CalendarClock
+                      : n.category === 'low_balance'
+                      ? Wallet
+                      : n.category === 'deposit_status'
+                      ? CheckCircle2
+                      : n.category === 'card_status'
+                      ? CreditCard
+                      : Bell
+                  }
+                  severity={sev}
+                />
+              )
+            })}
+          </ul>
+        )}
       </div>
 
       <div>
@@ -1513,6 +1598,7 @@ function Row({
   value,
   valueTone,
   Icon,
+  severity,
 }: {
   title: string
   subtitle?: string
@@ -1520,10 +1606,17 @@ function Row({
   value: string
   valueTone: string
   Icon: typeof ArrowUpRight
+  severity?: 'rose' | 'emerald' | 'ink'
 }) {
+  const iconTone =
+    severity === 'rose'
+      ? 'bg-rose-50 text-rose-700'
+      : severity === 'emerald'
+      ? 'bg-emerald-50 text-emerald-700'
+      : 'bg-ink-100 text-ink-700'
   return (
     <li className="flex items-center gap-3 rounded-2xl border border-ink-100 bg-white px-3 py-2.5 shadow-soft">
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-ink-100 text-ink-700">
+      <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${iconTone}`}>
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">

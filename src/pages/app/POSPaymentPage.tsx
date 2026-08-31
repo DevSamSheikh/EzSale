@@ -22,6 +22,8 @@ import { clearCart, getCart, getProducts } from '../../pos-store'
 import { getAuth, getBusiness } from '../../store'
 import { getActiveLocationIdSync } from '../../active-location'
 import { NFCScanExperience } from '../../components/NFCScanExperience'
+import { logActivity, notify } from '../../notifications-store'
+import { getCard, getMember } from '../../card-store'
 import type {
   Member,
   MembershipCard,
@@ -186,7 +188,45 @@ export default function POSPaymentPage() {
       ...extra,
     })
     if (method === 'membership' && extra.cardId) {
-      chargeCard(extra.cardId, total)
+      const updated = chargeCard(extra.cardId, total)
+      try {
+        const member = extra.memberId ? getMember(extra.memberId) : null
+        const card = updated ?? getCard(extra.cardId)
+        if (member && card) {
+          notify({
+            audience: 'member',
+            memberId: member.id,
+            category: 'transaction',
+            severity: 'info',
+            title: 'Membership card charged',
+            body: `Card ${card.cardNumber} was charged ${currency(total)}. New balance: ${currency(card.balance)}.`,
+            transactionId: created.id,
+            cardId: card.id,
+          })
+        }
+        notify({
+          audience: 'admin',
+          category: 'transaction',
+          severity: 'info',
+          title: 'Membership card sale',
+          body: `${member?.name ?? 'Member'} · ${card?.cardNumber ?? extra.cardId} · ${currency(total)} · ${created.id}`,
+          href: `/app/orders`,
+          transactionId: created.id,
+          cardId: extra.cardId,
+          memberId: extra.memberId,
+        })
+        logActivity({
+          category: 'transaction',
+          severity: 'info',
+          title: 'Membership card charged',
+          body: `${member?.name ?? 'Member'} · ${card?.cardNumber ?? extra.cardId} · ${currency(total)}`,
+          transactionId: created.id,
+          cardId: extra.cardId,
+          memberId: extra.memberId,
+        })
+      } catch {
+        /* best-effort */
+      }
     }
     clearCart()
     playCue('success')

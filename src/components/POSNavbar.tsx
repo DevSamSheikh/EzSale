@@ -1,6 +1,5 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import {
-  Bell,
   ChevronDown,
   Heart,
   LayoutDashboard,
@@ -13,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Logo } from './Primitives'
+import { TopbarNotifications } from './NotificationDropdown'
 import { getAuth } from '../store'
 import { getLocations } from '../orders-store'
 import { useActiveLocation } from '../active-location'
@@ -33,6 +33,7 @@ export function POSNavbar() {
   const initial = (auth?.email?.[0] ?? 'D').toUpperCase()
   const activeLocation = useActiveLocation()
   const [open, setOpen] = useState(false)
+  const [notifOpen, setNotifOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -161,13 +162,11 @@ export function POSNavbar() {
           >
             <LayoutDashboard className="h-4 w-4" />
           </button>
-          <button
-            className="relative grid h-9 w-9 place-items-center rounded-full border border-ink-200 bg-white text-ink-700 transition-colors hover:bg-ink-50"
-            aria-label="Notifications"
-          >
-            <Bell className="h-4 w-4" />
-            <span className="absolute right-1.5 top-1.5 inline-block h-2 w-2 rounded-full bg-brand-500" />
-          </button>
+          <TopbarNotifications
+            open={notifOpen}
+            onOpenChange={setNotifOpen}
+            onOpenAll={() => navigate('/app/notifications')}
+          />
           <button
             className="grid h-9 w-9 place-items-center rounded-full border border-ink-200 bg-white text-ink-600 transition-colors hover:bg-ink-50"
             aria-label="Wishlist"

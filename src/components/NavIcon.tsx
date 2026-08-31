@@ -15,6 +15,7 @@ import {
   UserCog,
   ShieldCheck,
   MapPin,
+  Bell,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -35,6 +36,7 @@ const ICONS: Record<string, LucideIcon> = {
   UserCog,
   ShieldCheck,
   MapPin,
+  Bell,
 }
 
 export function NavIcon({ name, className = 'w-5 h-5 nav-icon' }: { name: string; className?: string }) {
