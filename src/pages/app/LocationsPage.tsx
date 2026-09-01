@@ -15,7 +15,6 @@ import {
   Phone,
   Plus,
   Power,
-  Search,
   Shield,
   Store,
   Trash2,
@@ -28,6 +27,8 @@ import {
   EmptyState,
 } from '../../components/Primitives'
 import { DrawerShell } from '../../components/Drawer'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { ToastViewport, useToast } from '../../components/Toast'
 import {
   FilterSearchInput,
   FilterSelect,
@@ -89,7 +90,9 @@ export default function LocationsPage() {
   const [typeFilter, setTypeFilter] = useState<string[]>([])
   const [editing, setEditing] = useState<{ mode: 'create' } | { mode: 'edit'; id: string } | null>(null)
   const [viewing, setViewing] = useState<Location | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
+  const toast = useToast()
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
+  const [removeTermConfirm, setRemoveTermConfirm] = useState<POSTerminal | null>(null)
 
   useEffect(() => {
     function onFocus() {
@@ -139,8 +142,7 @@ export default function LocationsPage() {
   }, [data.locations])
 
   function flash(msg: string) {
-    setToast(msg)
-    setTimeout(() => setToast(null), 2200)
+    toast.success(msg)
     setTick((t) => t + 1)
   }
 
@@ -157,13 +159,15 @@ export default function LocationsPage() {
   }
 
   function handleDelete(id: string, name: string) {
-    if (typeof window !== 'undefined') {
-      const ok = window.confirm(`Remove "${name}"? This cannot be undone.`)
-      if (!ok) return
-    }
-    deleteLocation(id)
+    setDeleteConfirm({ id, name })
+  }
+
+  function confirmDelete() {
+    if (!deleteConfirm) return
+    deleteLocation(deleteConfirm.id)
     flash('Location removed.')
     playCue('warning')
+    setDeleteConfirm(null)
   }
 
   return (
@@ -316,14 +320,7 @@ export default function LocationsPage() {
         />
       )}
 
-      {toast && (
-        <div className="pointer-events-none fixed bottom-4 left-1/2 z-[60] -translate-x-1/2">
-          <div className="inline-flex items-center gap-2 rounded-pill bg-ink-900 px-4 py-2 text-sm font-semibold text-white shadow-pop">
-            <Check className="h-4 w-4 text-brand-400" />
-            {toast}
-          </div>
-        </div>
-      )}
+      <ToastViewport toasts={toast.toasts} onDismiss={toast.dismiss} />
     </div>
   )
 }
@@ -473,10 +470,10 @@ function LocationCard({
               <button
                 type="button"
                 onClick={() => onStatus('maintenance')}
-                className="grid h-7 w-7 place-items-center rounded-lg bg-white text-ink-600 transition-colors hover:bg-amber-50 hover:text-amber-700"
+                className="touch-target grid h-9 w-9 place-items-center rounded-lg bg-white text-ink-600 transition-colors hover:bg-amber-50 hover:text-amber-700"
                 aria-label="Set maintenance"
               >
-                <Pause className="h-3.5 w-3.5" />
+                <Pause className="h-4 w-4" />
               </button>
             </Tooltip>
           ) : (
@@ -484,10 +481,10 @@ function LocationCard({
               <button
                 type="button"
                 onClick={() => onStatus('active')}
-                className="grid h-7 w-7 place-items-center rounded-lg bg-white text-ink-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
+                className="touch-target grid h-9 w-9 place-items-center rounded-lg bg-white text-ink-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
                 aria-label="Activate"
               >
-                <Play className="h-3.5 w-3.5" />
+                <Play className="h-4 w-4" />
               </button>
             </Tooltip>
           )}
@@ -495,17 +492,17 @@ function LocationCard({
             <button
               type="button"
               onClick={onEdit}
-              className="grid h-7 w-7 place-items-center rounded-lg bg-white text-ink-600 transition-colors hover:bg-brand-50 hover:text-ink-900"
+              className="touch-target grid h-9 w-9 place-items-center rounded-lg bg-white text-ink-600 transition-colors hover:bg-brand-50 hover:text-ink-900"
               aria-label="Edit"
             >
-              <Edit3 className="h-3.5 w-3.5" />
+              <Edit3 className="h-4 w-4" />
             </button>
           </Tooltip>
           <Tooltip content="Remove location">
             <button
               type="button"
               onClick={onDelete}
-              className="grid h-7 w-7 place-items-center rounded-lg bg-white text-ink-600 transition-colors hover:bg-rose-50 hover:text-rose-700"
+              className="touch-target grid h-9 w-9 place-items-center rounded-lg bg-white text-ink-600 transition-colors hover:bg-rose-50 hover:text-rose-700"
               aria-label="Delete"
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -515,7 +512,7 @@ function LocationCard({
         <button
           type="button"
           onClick={onView}
-          className="text-[11px] font-semibold text-ink-700 hover:text-ink-900"
+          className="mt-1 inline-flex min-h-[36px] items-center text-[11px] font-semibold text-ink-700 hover:text-ink-900"
         >
           View details →
         </button>
@@ -805,7 +802,7 @@ function LocationEditor({
             {hours.map((h) => (
               <div
                 key={h.day}
-                className="grid grid-cols-[80px,1fr,1fr,auto] items-center gap-2 rounded-xl border border-ink-100 bg-white px-3 py-2"
+                className="grid grid-cols-1 gap-2 rounded-xl border border-ink-100 bg-white p-2.5 sm:grid-cols-[80px,1fr,1fr,auto] sm:items-center sm:gap-2 sm:p-0 sm:px-3 sm:py-2"
               >
                 <div className="text-sm font-semibold text-ink-900">
                   {DAY_LABELS[h.day]}
@@ -940,22 +937,37 @@ function LocationDetailsDrawer({
     .filter((t) => t.status === 'completed' && t.total > 0)
     .reduce((s, t) => s + t.total, 0)
 
+  const [newTermDraft, setNewTermDraft] = useState<{ open: boolean; name: string; code: string }>({
+    open: false,
+    name: '',
+    code: '',
+  })
+  const [removeTermConfirm, setRemoveTermConfirm] = useState<POSTerminal | null>(null)
+
   function addTerm() {
     if (typeof window === 'undefined') return
-    const name = window.prompt('Terminal name?', 'Counter') ?? ''
-    if (!name.trim()) return
-    const code = window.prompt('Short code (max 12 chars)?', `T-${(location.terminals.length + 1).toString().padStart(2, '0')}`) ?? ''
-    addTerminal(location.id, { name, code })
-    onStatus(location.status) // refresh parent state
+    const defaultCode = `T-${(location.terminals.length + 1).toString().padStart(2, '0')}`
+    setNewTermDraft({ open: true, name: 'Counter', code: defaultCode })
+  }
+
+  function commitAddTerm() {
+    const name = newTermDraft.name.trim()
+    const code = newTermDraft.code.trim()
+    if (!name) return
+    addTerminal(location.id, { name, code: code || `T-${(location.terminals.length + 1).toString().padStart(2, '0')}` })
+    setNewTermDraft({ open: false, name: '', code: '' })
+    onStatus(location.status)
     onEdit()
   }
 
   function removeTerm(t: POSTerminal) {
-    if (typeof window !== 'undefined') {
-      const ok = window.confirm(`Remove terminal "${t.name}"?`)
-      if (!ok) return
-    }
-    removeTerminal(location.id, t.id)
+    setRemoveTermConfirm(t)
+  }
+
+  function commitRemoveTerm() {
+    if (!removeTermConfirm) return
+    removeTerminal(location.id, removeTermConfirm.id)
+    setRemoveTermConfirm(null)
     onEdit()
   }
 
@@ -1111,23 +1123,23 @@ function LocationDetailsDrawer({
                     <button
                       type="button"
                       onClick={() => toggleTerm(t)}
-                      className="grid h-7 w-7 place-items-center rounded-lg bg-white text-ink-600 transition-colors hover:bg-brand-50 hover:text-ink-900"
+                      className="touch-target grid h-9 w-9 place-items-center rounded-lg bg-white text-ink-600 transition-colors hover:bg-brand-50 hover:text-ink-900"
                       aria-label="Toggle terminal status"
                       title="Toggle status"
                     >
                       {t.status === 'active' ? (
-                        <Pause className="h-3.5 w-3.5" />
+                        <Pause className="h-4 w-4" />
                       ) : (
-                        <Play className="h-3.5 w-3.5" />
+                        <Play className="h-4 w-4" />
                       )}
                     </button>
                     <button
                       type="button"
                       onClick={() => removeTerm(t)}
-                      className="grid h-7 w-7 place-items-center rounded-lg bg-white text-ink-600 transition-colors hover:bg-rose-50 hover:text-rose-700"
+                      className="touch-target grid h-9 w-9 place-items-center rounded-lg bg-white text-ink-600 transition-colors hover:bg-rose-50 hover:text-rose-700"
                       aria-label="Remove terminal"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </li>
                 ))}
@@ -1299,6 +1311,59 @@ function LocationDetailsDrawer({
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={removeTermConfirm !== null}
+        title={`Remove terminal "${removeTermConfirm?.name ?? ''}"?`}
+        description="The terminal will no longer be available to operators. Past transactions are kept."
+        impact={removeTermConfirm?.code}
+        confirmLabel="Remove terminal"
+        tone="danger"
+        onConfirm={commitRemoveTerm}
+        onClose={() => setRemoveTermConfirm(null)}
+      />
+      <ConfirmDialog
+        open={newTermDraft.open}
+        title="Add a new terminal"
+        description="Give the terminal a friendly name and short code that staff will recognise."
+        confirmLabel="Add terminal"
+        cancelLabel="Cancel"
+        tone="info"
+        onConfirm={commitAddTerm}
+        onClose={() => setNewTermDraft({ open: false, name: '', code: '' })}
+        impact={
+          <div className="space-y-2">
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+                Terminal name
+              </span>
+              <input
+                autoFocus
+                className="input"
+                value={newTermDraft.name}
+                onChange={(e) =>
+                  setNewTermDraft((d) => ({ ...d, name: e.target.value }))
+                }
+                placeholder="e.g. Counter"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+                Short code
+              </span>
+              <input
+                className="input font-mono"
+                value={newTermDraft.code}
+                onChange={(e) =>
+                  setNewTermDraft((d) => ({ ...d, code: e.target.value }))
+                }
+                placeholder="e.g. T-01"
+                maxLength={12}
+              />
+            </label>
+          </div>
+        }
+      />
     </DrawerShell>
   )
 }

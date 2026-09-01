@@ -6,15 +6,14 @@ import {
   Lock,
   PencilLine,
   Plus,
-  Search,
   Shield,
-  ShieldCheck,
   Trash2,
   Users,
-  X,
 } from 'lucide-react'
 import { PageHeader, EmptyState, StatCard } from '../../components/Primitives'
 import { DrawerShell } from '../../components/Drawer'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { ToastViewport, useToast } from '../../components/Toast'
 import {
   FilterSearchInput,
 } from '../../components/FilterBar'
@@ -37,7 +36,8 @@ export default function RolesPage() {
   const [search, setSearch] = useState('')
   const [editing, setEditing] = useState<Role | null>(null)
   const [creating, setCreating] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
+  const toast = useToast()
+  const [deleteConfirm, setDeleteConfirm] = useState<Role | null>(null)
 
   useEffect(() => {
     function onFocus() {
@@ -75,8 +75,7 @@ export default function RolesPage() {
   }, [data.operators])
 
   function flash(msg: string) {
-    setToast(msg)
-    setTimeout(() => setToast(null), 2200)
+    toast.success(msg)
     setTick((t) => t + 1)
   }
 
@@ -229,10 +228,7 @@ export default function RolesPage() {
               setEditing(null)
             }}
           onDelete={() => {
-              if (deleteRole(editing.id)) {
-                flash(`${editing.name} deleted.`)
-                setEditing(null)
-              }
+              if (editing) setDeleteConfirm(editing)
             }}
         />
       )}
@@ -258,14 +254,25 @@ export default function RolesPage() {
         />
       )}
 
-      {toast && (
-        <div className="pointer-events-none fixed bottom-4 left-1/2 z-[60] -translate-x-1/2">
-          <div className="inline-flex items-center gap-2 rounded-full bg-ink-900 px-4 py-2 text-sm font-semibold text-white shadow-pop">
-            <ShieldCheck className="h-4 w-4 text-brand-400" />
-            {toast}
-          </div>
-        </div>
+      {toast.toasts.length > 0 && (
+        <ToastViewport toasts={toast.toasts} onDismiss={toast.dismiss} />
       )}
+
+      <ConfirmDialog
+        open={deleteConfirm !== null}
+        title={deleteConfirm ? `Delete "${deleteConfirm.name}"?` : ''}
+        description="This role will be removed and any operator using it will need a new assignment."
+        confirmLabel="Delete role"
+        tone="danger"
+        onConfirm={() => {
+          if (deleteConfirm && deleteRole(deleteConfirm.id)) {
+            flash(`${deleteConfirm.name} deleted.`)
+            setEditing(null)
+          }
+          setDeleteConfirm(null)
+        }}
+        onClose={() => setDeleteConfirm(null)}
+      />
     </div>
   )
 }
@@ -351,7 +358,7 @@ function RoleDrawer({
               <button
                 type="button"
                 onClick={onDelete}
-                className="inline-flex items-center gap-1.5 rounded-pill border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                className="btn-danger"
               >
                 <Trash2 className="h-3.5 w-3.5" /> Delete role
               </button>
@@ -639,7 +646,3 @@ function RoleUsage({ roleId }: { roleId: string }) {
     </ul>
   )
 }
-
-// Reference Search to satisfy bundlers
-void Search
-void X

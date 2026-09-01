@@ -72,6 +72,72 @@ export function EmptyState({
   )
 }
 
+// ---- StatusPill ---------------------------------------------------------
+//
+// Canonical status / method / severity pill. Centralises the repeated
+// `inline-flex items-center gap-1 rounded-pill border px-2 py-0.5 text-[10px]
+// font-bold ...` pattern that lives in 8+ files.
+
+export type StatusToneName =
+  | 'neutral'
+  | 'brand'
+  | 'emerald'
+  | 'sky'
+  | 'indigo'
+  | 'amber'
+  | 'rose'
+  | 'orange'
+  | 'violet'
+
+export const STATUS_PILL_TONE: Record<StatusToneName, string> = {
+  neutral: 'bg-ink-100 text-ink-700 border-ink-200',
+  brand: 'bg-brand-50 text-ink-900 border-brand-200',
+  emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  sky: 'bg-sky-50 text-sky-700 border-sky-200',
+  indigo: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  amber: 'bg-amber-50 text-amber-700 border-amber-200',
+  rose: 'bg-rose-50 text-rose-700 border-rose-200',
+  orange: 'bg-orange-50 text-orange-700 border-orange-200',
+  violet: 'bg-violet-50 text-violet-700 border-violet-200',
+}
+
+export interface StatusPillProps {
+  /** Tone controls the swatch colours. Defaults to "neutral". */
+  tone?: StatusToneName
+  /** Optional leading dot for active/in-progress indicators. */
+  dot?: boolean
+  /** Optional leading icon. */
+  icon?: ReactNode
+  /** Small uppercase label inside the pill. */
+  children: ReactNode
+  /** Render slightly larger (for hero strips / detail headers). */
+  size?: 'sm' | 'md'
+  className?: string
+}
+
+export function StatusPill({
+  tone = 'neutral',
+  dot = false,
+  icon,
+  children,
+  size = 'sm',
+  className = '',
+}: StatusPillProps) {
+  const sizeCls =
+    size === 'md'
+      ? 'px-2.5 py-1 text-[11px]'
+      : 'px-2 py-0.5 text-[10px]'
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-pill border font-bold uppercase tracking-wide ${STATUS_PILL_TONE[tone]} ${sizeCls} ${className}`}
+    >
+      {dot && <span className="h-1.5 w-1.5 rounded-full bg-current" />}
+      {icon}
+      {children}
+    </span>
+  )
+}
+
 // ---- StatCard -----------------------------------------------------------
 //
 // Canonical "metric / KPI" tile. Used on Dashboard, DepositRequests, Users,

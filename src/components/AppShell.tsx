@@ -39,10 +39,10 @@ export default function AppShell() {
           sidebarCollapsed={collapsed}
           onToggleSidebar={() => setCollapsed((c) => !c)}
         />
-        <main className="flex-1 px-4 pb-24 pt-6 sm:px-6 lg:px-8 lg:pb-10">
+        <main className="flex-1 px-3 pb-28 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10">
           <Outlet />
         </main>
-        <MobileBottomNav />
+        <MobileBottomNav onMenu={() => setMobileNavOpen(true)} />
       </div>
     </div>
   )

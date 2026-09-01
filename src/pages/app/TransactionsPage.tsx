@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import { PageHeader, EmptyState, StatCard } from '../../components/Primitives'
+import { ResponsiveTable, Field, FieldRow } from '../../components/ResponsiveTable'
 import { TransactionDetailsDrawer } from '../../components/TransactionDetailsDrawer'
 import {
   FilterDateRange,
@@ -382,178 +383,275 @@ function TransactionsTable({
   const safePage = Math.min(Math.max(1, page), totalPages)
   const start = (safePage - 1) * pageSize
   const visible = transactions.slice(start, start + pageSize)
+
+  const columns = [
+    { label: 'Transaction ID', className: 'w-[160px]' },
+    { label: 'User' },
+    { label: 'Card', className: 'w-[140px]' },
+    { label: 'Type', className: 'w-[110px]' },
+    { label: 'Amount', className: 'w-[110px] text-right' },
+    { label: 'Before', className: 'w-[110px] text-right' },
+    { label: 'After', className: 'w-[110px] text-right' },
+    { label: 'Location', className: 'w-[140px]' },
+    { label: 'Operator', className: 'w-[160px]' },
+    { label: 'Date', className: 'w-[110px]' },
+  ]
+
+  const renderRow = (t: Transaction) => {
+    const member = members.find((m) => m.id === t.memberId) ?? null
+    const card = cards.find((c) => c.id === t.cardId) ?? null
+    const location = locations.find((l) => l.id === t.locationId) ?? null
+    const events = getFinancialEvents(t.id)
+    const cardEvent = events.find(
+      (e: FinancialEvent) =>
+        typeof e.balanceBefore === 'number' &&
+        typeof e.balanceAfter === 'number',
+    )
+    const txnType = txnTypeLabel(t)
+    return (
+      <>
+        <td className="px-4 py-3.5 align-top">
+          <div className="font-mono text-[13px] font-bold leading-tight text-ink-900">
+            {t.id}
+          </div>
+          {t.reference && (
+            <div className="mt-0.5 truncate text-[10px] text-ink-500">
+              Ref · {t.reference}
+            </div>
+          )}
+        </td>
+        <td className="px-4 py-3.5 align-top">
+          {member ? (
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold leading-tight text-ink-900">
+                {member.name}
+              </div>
+              {member.email && (
+                <div className="truncate text-[11px] text-ink-500">
+                  {member.email}
+                </div>
+              )}
+            </div>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[11px] text-ink-500">
+              <UserIcon className="h-3 w-3" /> Walk-in
+            </span>
+          )}
+        </td>
+        <td className="px-4 py-3.5 align-top">
+          {card ? (
+            <div className="min-w-0">
+              <div className="truncate font-mono text-[12px] font-semibold leading-tight text-ink-900">
+                {card.cardNumber}
+              </div>
+              <div className="truncate text-[10px] text-ink-500">{card.tier}</div>
+            </div>
+          ) : (
+            <span className="text-[11px] text-ink-500">—</span>
+          )}
+        </td>
+        <td className="px-4 py-3.5 align-top">
+          <Tooltip
+            content={
+              t.items.length === 0 ? (
+                <span className="text-ink-500">Balance adjustment</span>
+              ) : (
+                <ul className="space-y-0.5 text-left">
+                  {t.items.map((it, idx) => (
+                    <li key={idx} className="flex items-center gap-2">
+                      <span className="grid h-4 w-4 place-items-center rounded-full bg-ink-100 text-[10px] font-bold text-ink-700">
+                        {it.qty}
+                      </span>
+                      <span className="truncate">{it.name}</span>
+                    </li>
+                  ))}
+                </ul>
+              )
+            }
+            className="!whitespace-normal !max-w-[260px]"
+          >
+            <span className="inline-flex h-7 min-w-[28px] cursor-default items-center justify-center gap-1 rounded-full bg-ink-100 px-2 text-xs font-bold text-ink-700 hover:bg-ink-200">
+              {txnType.icon}
+              {txnType.label}
+            </span>
+          </Tooltip>
+        </td>
+        <td
+          className={`px-4 py-3.5 text-right align-top font-extrabold tabular-nums ${
+            t.total < 0 ? 'text-rose-600' : 'text-ink-900'
+          }`}
+        >
+          {formatCurrency(t.total)}
+        </td>
+        <td className="px-4 py-3.5 text-right align-top font-mono text-[12px] tabular-nums text-ink-700">
+          {typeof cardEvent?.balanceBefore === 'number'
+            ? formatCurrencyPlain(cardEvent.balanceBefore)
+            : card
+            ? formatCurrencyPlain(card.balance)
+            : '—'}
+        </td>
+        <td className="px-4 py-3.5 text-right align-top font-mono text-[12px] tabular-nums text-ink-700">
+          {typeof cardEvent?.balanceAfter === 'number'
+            ? formatCurrencyPlain(cardEvent.balanceAfter)
+            : '—'}
+        </td>
+        <td className="px-4 py-3.5 align-top">
+          {location ? (
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold leading-tight text-ink-900">
+                {location.name}
+              </div>
+              <div className="truncate font-mono text-[10px] text-ink-500">
+                {location.code}
+              </div>
+            </div>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[11px] text-ink-500">
+              <MapPin className="h-3 w-3" /> —
+            </span>
+          )}
+        </td>
+        <td className="px-4 py-3.5 align-top">
+          <div className="truncate text-sm font-semibold leading-tight text-ink-900">
+            {operatorName(t.operatorEmail)}
+          </div>
+          <div className="truncate text-[11px] text-ink-500">{t.operatorEmail}</div>
+        </td>
+        <td className="px-4 py-3.5 align-top whitespace-nowrap">
+          <div className="text-sm font-medium tabular-nums text-ink-800">
+            {formatDateShort(t.createdAt)}
+          </div>
+          <div className="text-[11px] tabular-nums text-ink-500">
+            {formatTime(t.createdAt)}
+          </div>
+        </td>
+      </>
+    )
+  }
+
+  const renderCard = (t: Transaction) => {
+    const member = members.find((m) => m.id === t.memberId) ?? null
+    const card = cards.find((c) => c.id === t.cardId) ?? null
+    const location = locations.find((l) => l.id === t.locationId) ?? null
+    const events = getFinancialEvents(t.id)
+    const cardEvent = events.find(
+      (e: FinancialEvent) =>
+        typeof e.balanceBefore === 'number' &&
+        typeof e.balanceAfter === 'number',
+    )
+    const txnType = txnTypeLabel(t)
+    return (
+      <button
+        type="button"
+        onClick={() => onSelect(t)}
+        className="-m-1 block w-full rounded-xl p-1 text-left transition-colors hover:bg-ink-50/60"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="font-mono text-[13px] font-bold leading-tight text-ink-900">
+              {t.id}
+            </div>
+            {t.reference && (
+              <div className="mt-0.5 truncate text-[10px] text-ink-500">
+                Ref · {t.reference}
+              </div>
+            )}
+          </div>
+          <div
+            className={`shrink-0 text-right font-extrabold tabular-nums ${
+              t.total < 0 ? 'text-rose-600' : 'text-ink-900'
+            }`}
+          >
+            {formatCurrency(t.total)}
+          </div>
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="inline-flex h-6 items-center gap-1 rounded-full bg-ink-100 px-2 text-[11px] font-bold text-ink-700">
+            {txnType.icon} {txnType.label}
+          </span>
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusPillClass(
+              t.status as TransactionStatus,
+            )}`}
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-current" />
+            {statusLabel(t.status as TransactionStatus)}
+          </span>
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${methodPillClass(
+              t.method as PaymentMethod,
+            )}`}
+          >
+            {methodIcon(t.method)}
+            {methodLabel(t.method)}
+          </span>
+        </div>
+
+        <FieldRow className="mt-3">
+          <Field label="User">
+            {member ? (
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold leading-tight text-ink-900">
+                  {member.name}
+                </div>
+                {member.email && (
+                  <div className="truncate text-[11px] text-ink-500">
+                    {member.email}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[11px] text-ink-500">
+                <UserIcon className="h-3 w-3" /> Walk-in
+              </span>
+            )}
+          </Field>
+          {card && (
+            <Field label="Card">
+              <span className="font-mono text-xs">{card.cardNumber}</span>
+            </Field>
+          )}
+          <Field label="Location">{location ? location.name : '—'}</Field>
+          <Field label="Operator">{operatorName(t.operatorEmail)}</Field>
+          <Field label="Balance change">
+            <span className="font-mono text-xs tabular-nums">
+              {typeof cardEvent?.balanceBefore === 'number'
+                ? formatCurrencyPlain(cardEvent.balanceBefore)
+                : '—'}{' '}
+              →{' '}
+              {typeof cardEvent?.balanceAfter === 'number'
+                ? formatCurrencyPlain(cardEvent.balanceAfter)
+                : '—'}
+            </span>
+          </Field>
+          <Field label="Date">
+            <span className="text-xs">
+              {formatDateShort(t.createdAt)} · {formatTime(t.createdAt)}
+            </span>
+          </Field>
+        </FieldRow>
+      </button>
+    )
+  }
+
   return (
     <div className="card overflow-hidden p-0">
-      <div className="overflow-x-auto">
-        <table className="w-full table-fixed text-sm">
-          <colgroup>
-            <col className="w-[160px]" />
-            <col />
-            <col className="w-[140px]" />
-            <col className="w-[110px]" />
-            <col className="w-[110px]" />
-            <col className="w-[110px]" />
-            <col className="w-[110px]" />
-            <col className="w-[140px]" />
-            <col className="w-[160px]" />
-            <col className="w-[110px]" />
-          </colgroup>
-          <thead>
-            <tr className="border-b border-ink-100 bg-ink-50/40 text-left text-[10px] font-bold uppercase tracking-wider text-ink-500">
-              <th className="px-4 py-3">Transaction ID</th>
-              <th className="px-4 py-3">User</th>
-              <th className="px-4 py-3">Card</th>
-              <th className="px-4 py-3">Type</th>
-              <th className="px-4 py-3 text-right">Amount</th>
-              <th className="px-4 py-3 text-right">Before</th>
-              <th className="px-4 py-3 text-right">After</th>
-              <th className="px-4 py-3">Location</th>
-              <th className="px-4 py-3">Operator</th>
-              <th className="px-4 py-3">Date</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-ink-100">
-            {visible.map((t) => {
-              const member = members.find((m) => m.id === t.memberId) ?? null
-              const card = cards.find((c) => c.id === t.cardId) ?? null
-              const location = locations.find((l) => l.id === t.locationId) ?? null
-              const events = getFinancialEvents(t.id)
-              // The most recent event for this transaction that touched the card
-              // gives us a balance before/after snapshot (for the table view).
-              const cardEvent = events.find(
-                (e: FinancialEvent) =>
-                  typeof e.balanceBefore === 'number' &&
-                  typeof e.balanceAfter === 'number',
-              )
-              const txnType = txnTypeLabel(t)
-              return (
-                <tr
-                  key={t.id}
-                  className="cursor-pointer transition-colors hover:bg-ink-50/70"
-                  onClick={() => onSelect(t)}
-                >
-                  <td className="px-4 py-3.5 align-top">
-                    <div className="font-mono text-[13px] font-bold leading-tight text-ink-900">
-                      {t.id}
-                    </div>
-                    {t.reference && (
-                      <div className="mt-0.5 truncate text-[10px] text-ink-500">
-                        Ref · {t.reference}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3.5 align-top">
-                    {member ? (
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold leading-tight text-ink-900">
-                          {member.name}
-                        </div>
-                        {member.email && (
-                          <div className="truncate text-[11px] text-ink-500">
-                            {member.email}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-ink-500">
-                        <UserIcon className="h-3 w-3" /> Walk-in
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3.5 align-top">
-                    {card ? (
-                      <div className="min-w-0">
-                        <div className="truncate font-mono text-[12px] font-semibold leading-tight text-ink-900">
-                          {card.cardNumber}
-                        </div>
-                        <div className="truncate text-[10px] text-ink-500">{card.tier}</div>
-                      </div>
-                    ) : (
-                      <span className="text-[11px] text-ink-500">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3.5 align-top">
-                    <Tooltip
-                      content={
-                        t.items.length === 0 ? (
-                          <span className="text-ink-500">Balance adjustment</span>
-                        ) : (
-                          <ul className="space-y-0.5 text-left">
-                            {t.items.map((it, idx) => (
-                              <li key={idx} className="flex items-center gap-2">
-                                <span className="grid h-4 w-4 place-items-center rounded-full bg-ink-100 text-[10px] font-bold text-ink-700">
-                                  {it.qty}
-                                </span>
-                                <span className="truncate">{it.name}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        )
-                      }
-                      className="!whitespace-normal !max-w-[260px]"
-                    >
-                      <span className="inline-flex h-7 min-w-[28px] cursor-default items-center justify-center rounded-full bg-ink-100 px-2 text-xs font-bold text-ink-700 hover:bg-ink-200">
-                        {txnType.label}
-                      </span>
-                    </Tooltip>
-                  </td>
-                  <td
-                    className={`px-4 py-3.5 text-right align-top font-extrabold tabular-nums ${
-                      t.total < 0 ? 'text-rose-600' : 'text-ink-900'
-                    }`}
-                  >
-                    {formatCurrency(t.total)}
-                  </td>
-                  <td className="px-4 py-3.5 text-right align-top font-mono text-[12px] tabular-nums text-ink-700">
-                    {typeof cardEvent?.balanceBefore === 'number'
-                      ? formatCurrencyPlain(cardEvent.balanceBefore)
-                      : card
-                      ? formatCurrencyPlain(card.balance)
-                      : '—'}
-                  </td>
-                  <td className="px-4 py-3.5 text-right align-top font-mono text-[12px] tabular-nums text-ink-700">
-                    {typeof cardEvent?.balanceAfter === 'number'
-                      ? formatCurrencyPlain(cardEvent.balanceAfter)
-                      : '—'}
-                  </td>
-                  <td className="px-4 py-3.5 align-top">
-                    {location ? (
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold leading-tight text-ink-900">
-                          {location.name}
-                        </div>
-                        <div className="truncate font-mono text-[10px] text-ink-500">
-                          {location.code}
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-ink-500">
-                        <MapPin className="h-3 w-3" /> —
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3.5 align-top">
-                    <div className="truncate text-sm font-semibold leading-tight text-ink-900">
-                      {operatorName(t.operatorEmail)}
-                    </div>
-                    <div className="truncate text-[11px] text-ink-500">
-                      {t.operatorEmail}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5 align-top whitespace-nowrap">
-                    <div className="text-sm font-medium tabular-nums text-ink-800">
-                      {formatDateShort(t.createdAt)}
-                    </div>
-                    <div className="text-[11px] tabular-nums text-ink-500">
-                      {formatTime(t.createdAt)}
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      <ResponsiveTable
+        columns={columns}
+        rows={visible}
+        rowKey={(t) => t.id}
+        renderRow={renderRow}
+        renderCard={renderCard}
+        tableClassName="w-full text-sm"
+        empty={
+          <EmptyState
+            icon={<ArrowLeftRight className="h-7 w-7" />}
+            title="No transactions match your filters"
+            description="Try clearing the search or expanding the date range."
+          />
+        }
+      />
       <Pagination
         page={safePage}
         pageSize={pageSize}

@@ -1,10 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   CreditCard,
   Eye,
   Filter,
@@ -22,7 +18,11 @@ import {
   Wallet,
   X,
 } from 'lucide-react'
-import { PageHeader, StatCard } from '../../components/Primitives'
+import { EmptyState, PageHeader, StatCard } from '../../components/Primitives'
+import { ResponsiveTable, Field, FieldRow } from '../../components/ResponsiveTable'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { ToastViewport, useToast } from '../../components/Toast'
+import { Pagination } from '../../components/Pagination'
 import {
   createMember,
   getCards,
@@ -164,19 +164,14 @@ export default function UsersPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<PageSize>(12)
-  const [createOpen, setCreateOpen] = useState(false)
+const [createOpen, setCreateOpen] = useState(false)
   const [editing, setEditing] = useState<Member | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
+  const toast = useToast()
+  const [statusAction, setStatusAction] = useState<{ member: Member; status: Member['status'] } | null>(null)
 
   useEffect(() => {
     refresh()
   }, [])
-
-  useEffect(() => {
-    if (!toast) return
-    const t = setTimeout(() => setToast(null), 2200)
-    return () => clearTimeout(t)
-  }, [toast])
 
   function refresh() {
     setMembers(getMembers())
@@ -265,22 +260,12 @@ export default function UsersPage() {
     setPage(1)
   }, [statusFilter, typeFilter, tierFilter, quickFilter, pageSize])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const safePage = Math.min(page, totalPages)
   const paged = useMemo(() => {
     const start = (safePage - 1) * pageSize
     return filtered.slice(start, start + pageSize)
   }, [filtered, safePage, pageSize])
-
-  const range = useMemo(() => {
-    const total = totalPages
-    const current = safePage
-    const span = 5
-    if (total <= span) return Array.from({ length: total }, (_, i) => i + 1)
-    const end = Math.min(total, current + 2)
-    const start = Math.max(1, end - span + 1)
-    return Array.from({ length: end - start + 1 }, (_, i) => start + i)
-  }, [totalPages, safePage])
 
   function resetFilters() {
     setStatusFilter('all')
@@ -289,14 +274,14 @@ export default function UsersPage() {
     setQuickFilter('all')
   }
 
-  function notify(msg: string) {
-    setToast(msg)
+function notify(msg: string, tone: 'success' | 'info' | 'warning' = 'success') {
+    toast.push({ tone, title: msg })
   }
 
   function handleDeactivate(m: Member) {
     setMemberStatus(m.id, 'inactive')
     refresh()
-    notify(`${m.name} deactivated.`)
+    notify(`${m.name} deactivated.`, 'info')
     playCue('info')
   }
 
@@ -310,7 +295,7 @@ export default function UsersPage() {
   function handleSuspend(m: Member) {
     setMemberStatus(m.id, 'suspended')
     refresh()
-    notify(`${m.name} suspended.`)
+    notify(`${m.name} suspended.`, 'warning')
     playCue('warning')
   }
 
@@ -448,7 +433,7 @@ export default function UsersPage() {
             <div
               role="tablist"
               aria-label="View mode"
-              className="inline-flex items-center rounded-pill border border-ink-200 bg-white p-0.5"
+              className="hidden sm:inline-flex items-center rounded-pill border border-ink-200 bg-white p-0.5"
             >
               <button
                 role="tab"
@@ -481,129 +466,229 @@ export default function UsersPage() {
         </div>
 
         {viewMode === 'list' ? (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-ink-100 text-[11px] uppercase tracking-wide text-ink-500">
-                  <th className="py-2 pr-4 font-semibold">{termMember}</th>
-                  <th className="py-2 pr-4 font-semibold">Contact</th>
-                  <th className="py-2 pr-4 font-semibold">Type</th>
-                  <th className="py-2 pr-4 font-semibold">Status</th>
-                  <th className="py-2 pr-4 font-semibold">Card</th>
-                  <th className="py-2 pr-4 text-right font-semibold">Balance</th>
-                  <th className="py-2 pr-4 text-right font-semibold">Total spent</th>
-                  <th className="py-2 pr-4 font-semibold">Joined</th>
-                  <th className="py-2 pr-4 font-semibold">Last active</th>
-                  <th className="py-2 text-right font-semibold">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paged.length === 0 && (
-                  <tr>
-                    <td colSpan={10} className="py-10 text-center text-sm text-ink-500">
-                      No {termPlural.toLowerCase()} match the current filters.
+          <div className="mt-4">
+            <ResponsiveTable
+              columns={[
+                { label: termMember },
+                { label: 'Contact' },
+                { label: 'Type' },
+                { label: 'Status' },
+                { label: 'Card' },
+                { label: 'Balance', className: 'text-right' },
+                { label: 'Total spent', className: 'text-right' },
+                { label: 'Joined' },
+                { label: 'Last active' },
+                { label: 'Actions', className: 'text-right' },
+              ]}
+              rows={paged}
+              rowKey={(m) => m.id}
+              tableClassName="w-full text-left text-sm"
+              mode="scroll"
+              minWidth="860px"
+              empty={
+                <EmptyState
+                  icon={<UsersIcon className="h-7 w-7" />}
+                  title={`No ${termPlural.toLowerCase()} match the current filters`}
+                  description="Try clearing one of the filters above."
+                />
+              }
+              renderRow={(m) => {
+                const memberCards = cardsByMember.get(m.id) ?? []
+                const primary = memberCards[0]
+                const balance = balanceByMember.get(m.id) ?? 0
+                const totalSpent = totalsByMember.get(m.id) ?? 0
+                return (
+                  <>
+                    <td className="py-3 pr-4">
+                      <Link
+                        to={`/app/users/${m.id}`}
+                        className="flex items-center gap-2.5 group"
+                      >
+                        <Avatar member={m} size={36} />
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-ink-900 group-hover:underline">
+                            {m.name}
+                          </div>
+                          <div className="truncate text-[11px] text-ink-500">
+                            {tierByMember.get(m.id) ?? 'Bronze'} · {m.id}
+                          </div>
+                        </div>
+                      </Link>
                     </td>
-                  </tr>
-                )}
-                {paged.map((m) => {
-                  const memberCards = cardsByMember.get(m.id) ?? []
-                  const primary = memberCards[0]
-                  const balance = balanceByMember.get(m.id) ?? 0
-                  const totalSpent = totalsByMember.get(m.id) ?? 0
-                  return (
-                    <tr
-                      key={m.id}
-                      className="border-b border-ink-100 last:border-0 hover:bg-ink-50/60"
-                    >
-                      <td className="py-3 pr-4">
+                    <td className="py-3 pr-4">
+                      <div className="min-w-0">
+                        {m.email && (
+                          <div className="flex items-center gap-1.5 truncate text-xs text-ink-700">
+                            <Mail className="h-3 w-3 text-ink-400" />
+                            <span className="truncate">{m.email}</span>
+                          </div>
+                        )}
+                        {m.phone && (
+                          <div className="flex items-center gap-1.5 truncate text-[11px] text-ink-500">
+                            <Phone className="h-3 w-3 text-ink-400" />
+                            <span className="truncate">{m.phone}</span>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span
+                        className={`rounded-pill border px-2 py-0.5 text-[11px] font-semibold ${typeBadgeClass(
+                          m.type,
+                        )}`}
+                      >
+                        {memberTypeLabel(m.type)}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <StatusPill status={m.status} />
+                    </td>
+                    <td className="py-3 pr-4">
+                      {primary ? (
+                        <Link
+                          to={`/app/cards/${primary.id}`}
+                          className="inline-flex items-center gap-1.5 font-mono text-xs font-semibold text-ink-900 hover:underline"
+                        >
+                          <CreditCard className="h-3.5 w-3.5 text-ink-400" />
+                          {maskCardNumber(primary.cardNumber)}
+                        </Link>
+                      ) : (
+                        <span className="text-[11px] italic text-ink-500">No card</span>
+                      )}
+                    </td>
+                    <td className="py-3 pr-4 text-right">
+                      <div className="font-bold text-ink-900">${balance.toFixed(0)}</div>
+                    </td>
+                    <td className="py-3 pr-4 text-right text-[11px] text-ink-500">
+                      ${totalSpent.toFixed(0)}
+                    </td>
+                    <td className="py-3 pr-4 text-xs text-ink-700">{formatDate(m.joinedAt)}</td>
+                    <td className="py-3 pr-4 text-xs text-ink-500">
+                      {formatRelative(m.lastActiveAt)}
+                    </td>
+                    <td className="py-3 text-right">
+                      <RowActions
+                        member={m}
+                        onView={() => navigate(`/app/users/${m.id}`)}
+                        onEdit={() => setEditing(m)}
+                        onDeactivate={() => setStatusAction({ member: m, status: 'inactive' })}
+                        onReactivate={() => handleReactivate(m)}
+                        onSuspend={() => setStatusAction({ member: m, status: 'suspended' })}
+                      />
+                    </td>
+                  </>
+                )
+              }}
+              renderCard={(m) => {
+                const memberCards = cardsByMember.get(m.id) ?? []
+                const primary = memberCards[0]
+                const balance = balanceByMember.get(m.id) ?? 0
+                const totalSpent = totalsByMember.get(m.id) ?? 0
+                return (
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <Avatar member={m} size={40} />
+                      <div className="min-w-0 flex-1">
                         <Link
                           to={`/app/users/${m.id}`}
-                          className="flex items-center gap-2.5 group"
+                          className="block truncate text-sm font-semibold text-ink-900 hover:underline"
                         >
-                          <Avatar member={m} size={36} />
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold text-ink-900 group-hover:underline">
-                              {m.name}
-                            </div>
-                            <div className="truncate text-[11px] text-ink-500">
-                              {tierByMember.get(m.id) ?? 'Bronze'} · {m.id}
-                            </div>
-                          </div>
+                          {m.name}
                         </Link>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <div className="min-w-0">
-                          {m.email && (
-                            <div className="flex items-center gap-1.5 truncate text-xs text-ink-700">
-                              <Mail className="h-3 w-3 text-ink-400" />
-                              <span className="truncate">{m.email}</span>
-                            </div>
-                          )}
-                          {m.phone && (
-                            <div className="flex items-center gap-1.5 truncate text-[11px] text-ink-500">
-                              <Phone className="h-3 w-3 text-ink-400" />
-                              <span className="truncate">{m.phone}</span>
-                            </div>
-                          )}
+                        <div className="truncate text-[11px] text-ink-500">
+                          {tierByMember.get(m.id) ?? 'Bronze'} · {memberTypeLabel(m.type)}
                         </div>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <span
-                          className={`rounded-pill border px-2 py-0.5 text-[11px] font-semibold ${typeBadgeClass(
-                            m.type,
-                          )}`}
-                        >
-                          {memberTypeLabel(m.type)}
+                      </div>
+                      <StatusPill status={m.status} />
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                      <span
+                        className={`rounded-pill border px-2 py-0.5 text-[11px] font-semibold ${typeBadgeClass(
+                          m.type,
+                        )}`}
+                      >
+                        {memberTypeLabel(m.type)}
+                      </span>
+                      {primary && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 bg-white px-2 py-0.5 font-mono text-[11px] font-semibold text-ink-900">
+                          <CreditCard className="h-3 w-3 text-ink-400" />
+                          {maskCardNumber(primary.cardNumber)}
                         </span>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <StatusPill status={m.status} />
-                      </td>
-                      <td className="py-3 pr-4">
-                        {primary ? (
-                          <Link
-                            to={`/app/cards/${primary.id}`}
-                            className="inline-flex items-center gap-1.5 font-mono text-xs font-semibold text-ink-900 hover:underline"
-                          >
-                            <CreditCard className="h-3.5 w-3.5 text-ink-400" />
-                            {maskCardNumber(primary.cardNumber)}
-                          </Link>
-                        ) : (
-                          <span className="text-[11px] italic text-ink-500">No card</span>
-                        )}
-                      </td>
-                      <td className="py-3 pr-4 text-right">
-                        <div className="font-bold text-ink-900">${balance.toFixed(0)}</div>
-                      </td>
-                      <td className="py-3 pr-4 text-right text-[11px] text-ink-500">
-                        ${totalSpent.toFixed(0)}
-                      </td>
-                      <td className="py-3 pr-4 text-xs text-ink-700">{formatDate(m.joinedAt)}</td>
-                      <td className="py-3 pr-4 text-xs text-ink-500">
-                        {formatRelative(m.lastActiveAt)}
-                      </td>
-                      <td className="py-3 text-right">
-                        <RowActions
-                          member={m}
-                          onView={() => navigate(`/app/users/${m.id}`)}
-                          onEdit={() => setEditing(m)}
-                          onDeactivate={() => handleDeactivate(m)}
-                          onReactivate={() => handleReactivate(m)}
-                          onSuspend={() => handleSuspend(m)}
-                        />
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                      )}
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl border border-ink-100 bg-ink-50/50 p-2 text-center">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-ink-500">
+                          Balance
+                        </div>
+                        <div className="text-sm font-bold text-ink-900">
+                          ${balance.toFixed(0)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-ink-500">
+                          Spent
+                        </div>
+                        <div className="text-sm font-semibold text-ink-700">
+                          ${totalSpent.toFixed(0)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-ink-500">
+                          Cards
+                        </div>
+                        <div className="text-sm font-bold text-ink-900">
+                          {memberCards.length}
+                        </div>
+                      </div>
+                    </div>
+
+                    <FieldRow className="mt-3">
+                      {m.email && (
+                        <Field label="Email">
+                          <span className="truncate text-xs">{m.email}</span>
+                        </Field>
+                      )}
+                      {m.phone && (
+                        <Field label="Phone">
+                          <span className="truncate text-xs">{m.phone}</span>
+                        </Field>
+                      )}
+                      <Field label="Joined">{formatDate(m.joinedAt)}</Field>
+                      <Field label="Last active">{formatRelative(m.lastActiveAt)}</Field>
+                    </FieldRow>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3">
+                      <Link
+                        to={`/app/users/${m.id}`}
+                        className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-ink-200 bg-white px-3 text-xs font-semibold text-ink-700 hover:bg-ink-50"
+                      >
+                        <Eye className="h-3.5 w-3.5" /> View
+                      </Link>
+                      <RowActions
+                        member={m}
+                        onView={() => navigate(`/app/users/${m.id}`)}
+                        onEdit={() => setEditing(m)}
+                        onDeactivate={() => setStatusAction({ member: m, status: 'inactive' })}
+                        onReactivate={() => handleReactivate(m)}
+                        onSuspend={() => setStatusAction({ member: m, status: 'suspended' })}
+                      />
+                    </div>
+                  </div>
+                )
+              }}
+            />
           </div>
         ) : (
-          <div className="mt-4">
+<div className="mt-4">
             {paged.length === 0 ? (
-              <div className="grid place-items-center rounded-2xl border border-dashed border-ink-200 bg-ink-50/40 px-6 py-14 text-center text-sm text-ink-500">
-                No {termPlural.toLowerCase()} match the current filters.
-              </div>
+              <EmptyState
+                icon={<UsersIcon className="h-7 w-7" />}
+                title={`No ${termPlural.toLowerCase()} match the current filters`}
+                description="Try clearing one of the filters above."
+              />
             ) : (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {paged.map((m) => (
@@ -622,14 +707,14 @@ export default function UsersPage() {
           </div>
         )}
 
-        <Pagination
+<Pagination
           page={safePage}
-          totalPages={totalPages}
           pageSize={pageSize}
-          totalItems={filtered.length}
-          range={range}
-          onPageChange={setPage}
-          onPageSizeChange={setPageSize}
+          total={filtered.length}
+          onChange={(next) => {
+            setPage(next.page)
+            setPageSize(next.pageSize as PageSize)
+          }}
         />
       </div>
 
@@ -661,11 +746,32 @@ export default function UsersPage() {
         />
       )}
 
-      {toast && (
-        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-pill bg-ink-900 px-4 py-2 text-sm font-semibold text-white shadow-pop">
-          {toast}
-        </div>
+{toast.toasts.length > 0 && (
+        <ToastViewport toasts={toast.toasts} onDismiss={toast.dismiss} />
       )}
+
+      <ConfirmDialog
+        open={statusAction !== null}
+        title={
+          statusAction?.status === 'suspended'
+            ? `Suspend ${statusAction.member.name}?`
+            : `Deactivate ${statusAction?.member.name ?? ''}?`
+        }
+        description={
+          statusAction?.status === 'suspended'
+            ? 'They won\u2019t be able to sign in or make purchases until you reactivate them.'
+            : 'Their account will be paused. You can reactivate it any time.'
+        }
+        confirmLabel={statusAction?.status === 'suspended' ? 'Suspend' : 'Deactivate'}
+        tone={statusAction?.status === 'suspended' ? 'danger' : 'warning'}
+        onConfirm={() => {
+          if (!statusAction) return
+          if (statusAction.status === 'suspended') handleSuspend(statusAction.member)
+          else handleDeactivate(statusAction.member)
+          setStatusAction(null)
+        }}
+        onClose={() => setStatusAction(null)}
+      />
     </div>
   )
 }
@@ -774,12 +880,12 @@ function RowActions({
       <button
         ref={btnRef}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
+        className="touch-target inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
         aria-label="Actions"
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <MoreVertical className="h-3.5 w-3.5" />
+        <MoreVertical className="h-4 w-4" />
       </button>
       {open && pos && (
         <>
@@ -853,102 +959,6 @@ function RowActions({
   )
 }
 
-function Pagination({
-  page,
-  totalPages,
-  pageSize,
-  totalItems,
-  range,
-  onPageChange,
-  onPageSizeChange,
-}: {
-  page: number
-  totalPages: number
-  pageSize: PageSize
-  totalItems: number
-  range: number[]
-  onPageChange: (p: number) => void
-  onPageSizeChange: (s: PageSize) => void
-}) {
-  if (totalItems === 0) return null
-  const first = (page - 1) * pageSize + 1
-  const last = Math.min(page * pageSize, totalItems)
-  const btn =
-    'inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-ink-200 bg-white px-2 text-xs font-semibold text-ink-700 transition-colors hover:bg-ink-50 disabled:cursor-not-allowed disabled:opacity-40'
-  const btnActive =
-    'inline-flex h-8 min-w-8 items-center justify-center rounded-lg bg-ink-900 px-2 text-xs font-semibold text-white'
-  return (
-    <div className="mt-4 flex flex-col-reverse items-stretch justify-between gap-3 border-t border-ink-100 pt-3 sm:flex-row sm:items-center">
-      <div className="flex flex-wrap items-center gap-3 text-xs text-ink-500">
-        <span>
-          <span className="font-semibold text-ink-700">
-            {first}–{last}
-          </span>{' '}
-          of <span className="font-semibold text-ink-700">{totalItems}</span>
-        </span>
-        <label className="inline-flex items-center gap-1.5">
-          Rows
-          <select
-            className="h-7 rounded-lg border border-ink-200 bg-white px-1.5 text-xs text-ink-700 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-            value={pageSize}
-            onChange={(e) => onPageSizeChange(Number(e.target.value) as PageSize)}
-          >
-            {[6, 12, 24, 48].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className="flex items-center gap-1">
-        <button
-          className={btn}
-          onClick={() => onPageChange(1)}
-          disabled={page === 1}
-          aria-label="First page"
-        >
-          <ChevronsLeft className="h-3.5 w-3.5" />
-        </button>
-        <button
-          className={btn}
-          onClick={() => onPageChange(Math.max(1, page - 1))}
-          disabled={page === 1}
-          aria-label="Previous page"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" />
-        </button>
-        {range.map((p) => (
-          <button
-            key={p}
-            onClick={() => onPageChange(p)}
-            className={p === page ? btnActive : btn}
-            aria-current={p === page ? 'page' : undefined}
-          >
-            {p}
-          </button>
-        ))}
-        <button
-          className={btn}
-          onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-          disabled={page === totalPages}
-          aria-label="Next page"
-        >
-          <ChevronRight className="h-3.5 w-3.5" />
-        </button>
-        <button
-          className={btn}
-          onClick={() => onPageChange(totalPages)}
-          disabled={page === totalPages}
-          aria-label="Last page"
-        >
-          <ChevronsRight className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    </div>
-  )
-}
-
 function UserDrawer({
   mode,
   member,
@@ -1009,7 +1019,7 @@ function UserDrawer({
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-ink-900/50" onClick={onClose} />
-      <div className="absolute inset-y-0 right-0 flex w-full max-w-md animate-[slideIn_0.25s_ease-out] flex-col overflow-hidden bg-white shadow-pop">
+      <div className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] animate-[slideUp_0.25s_ease-out] flex-col overflow-hidden rounded-t-3xl bg-white shadow-pop md:inset-y-0 md:right-0 md:left-auto md:max-h-full md:w-full md:max-w-md md:animate-[slideIn_0.25s_ease-out] md:rounded-none">
         <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4">
           <div>
             <div className="text-base font-bold text-ink-900">{title}</div>
@@ -1159,7 +1169,6 @@ function UserDrawer({
           </div>
         </div>
       </div>
-      <style>{`@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
     </div>
   )
 }

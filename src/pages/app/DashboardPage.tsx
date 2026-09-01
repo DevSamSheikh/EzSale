@@ -995,8 +995,8 @@ function RecentTransactionsTable({ transactions }: { transactions: Transaction[]
           </Link>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="scroll-soft overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
             <thead className="text-left text-xs uppercase tracking-wide text-ink-400">
               <tr>
                 <th className="px-5 py-3 font-semibold">Order</th>

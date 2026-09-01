@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import {
   ChevronDown,
+  Grid3x3,
   LogOut,
   Menu,
   MonitorPlay,
@@ -205,33 +206,97 @@ export function Topbar({
   )
 }
 
-export function MobileBottomNav() {
+export function MobileBottomNav({ onMenu }: { onMenu?: () => void }) {
   const location = useLocation()
+  const [moreOpen, setMoreOpen] = useState(false)
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-ink-100 bg-white shadow-pop lg:hidden">
-      {NAV_LINKS.filter((l) =>
-        ['/app/dashboard', '/app/products', '/app/orders', '/app/transactions', '/app/settings'].includes(l.to),
-      ).map((l) => {
-        const isActive = location.pathname.startsWith(l.to)
-        return (
-          <Link
-            key={l.to}
-            to={l.to}
-            className={`flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium ${
-              isActive ? 'text-ink-900' : 'text-ink-500'
-            }`}
-          >
-            <span
-              className={`grid h-8 w-12 place-items-center rounded-full ${
-                isActive ? 'bg-brand-500/15' : ''
+    <>
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-ink-100 bg-white/95 pb-safe shadow-pop backdrop-blur lg:hidden">
+        {NAV_LINKS.filter((l) =>
+          ['/app/dashboard', '/app/products', '/app/orders', '/app/transactions'].includes(l.to),
+        ).map((l) => {
+          const isActive = location.pathname.startsWith(l.to)
+          return (
+            <Link
+              key={l.to}
+              to={l.to}
+              className={`flex min-h-[52px] flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium transition-colors ${
+                isActive ? 'text-ink-900' : 'text-ink-500'
               }`}
+              aria-current={isActive ? 'page' : undefined}
             >
-              <NavIcon name={l.icon} className={`h-5 w-5 ${isActive ? 'text-brand-600' : ''}`} />
-            </span>
-            <span>{l.label}</span>
-          </Link>
-        )
-      })}
-    </nav>
+              <span
+                className={`grid h-8 w-12 place-items-center rounded-full transition-colors ${
+                  isActive ? 'bg-brand-500/15' : ''
+                }`}
+              >
+                <NavIcon name={l.icon} className={`h-5 w-5 ${isActive ? 'text-brand-600' : ''}`} />
+              </span>
+              <span className="truncate">{l.label}</span>
+            </Link>
+          )
+        })}
+        <button
+          type="button"
+          onClick={() => setMoreOpen(true)}
+          className="flex min-h-[52px] flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium text-ink-500 transition-colors"
+          aria-label="More"
+        >
+          <span className="grid h-8 w-12 place-items-center rounded-full">
+            <Grid3x3 className="h-5 w-5" />
+          </span>
+          <span>More</span>
+        </button>
+      </nav>
+      <MobileMoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} />
+    </>
+  )
+}
+
+// Lightweight "More" sheet used when the bottom nav needs to expose extra
+// destinations (e.g. categories, roles, staff, locations) on small screens.
+export function MobileMoreSheet({
+  open,
+  onClose,
+}: {
+  open: boolean
+  onClose: () => void
+}) {
+  const location = useLocation()
+  const me = getCurrentOperator()
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-ink-900/50" onClick={onClose} aria-hidden />
+      <div className="absolute inset-x-0 bottom-0 flex max-h-[80vh] animate-[slideUp_0.25s_ease-out] flex-col overflow-hidden rounded-t-3xl bg-white pb-safe shadow-pop">
+        <div className="flex justify-center pt-2 pb-1">
+          <div className="h-1.5 w-12 rounded-full bg-ink-200" aria-hidden />
+        </div>
+        <div className="border-b border-ink-100 px-5 py-3 text-sm font-semibold text-ink-900">
+          More
+        </div>
+        <nav className="space-y-1 overflow-y-auto px-3 py-2">
+          {NAV_LINKS.filter((l) => l.to !== '/app/pos').map((l) => {
+            const active = location.pathname.startsWith(l.to)
+            return (
+              <Link
+                key={l.to}
+                to={l.to}
+                onClick={onClose}
+                className={`flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                  active
+                    ? 'bg-brand-500/10 text-ink-900'
+                    : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
+                }`}
+              >
+                <NavIcon name={l.icon} className="h-4 w-4" />
+                <span className="truncate">{l.label}</span>
+              </Link>
+            )
+          })}
+        </nav>
+      </div>
+      <style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
+    </div>
   )
 }

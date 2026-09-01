@@ -1,14 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
+  AlertOctagon,
   ArrowLeft,
+  ArrowUpRight,
   CheckCircle2,
+  Clock4,
+  CreditCard,
   Download,
   Eye,
+  Hash,
   Mail,
+  MapPin,
+  MonitorPlay,
   Printer,
   RotateCcw,
   Share2,
+  User as UserIcon,
+  Wallet,
 } from 'lucide-react'
 import {
   ReceiptDocument,
@@ -17,10 +26,11 @@ import {
 } from '../../components/ReceiptDocument'
 import { ReceiptPreviewModal } from '../../components/ReceiptPreviewModal'
 import { getTransactions, paymentMethodLabel } from '../../payment-store'
-import { getCard, getMember } from '../../card-store'
+import { getCard, getMember, maskCardNumber } from '../../card-store'
 import { getBusiness } from '../../store'
 import { getLocation, getTerminal } from '../../orders-store'
-import { getOperatorByEmail } from '../../operators-store'
+import { getOperatorByEmail, getRoles } from '../../operators-store'
+import { formatCurrency, statusLabel, statusPillClass } from '../../order-utils'
 import { playCue } from '../../audio'
 import type { Transaction } from '../../types'
 
@@ -96,15 +106,15 @@ export default function POSReceiptPage() {
       <div className="mx-auto flex max-w-[820px] flex-col gap-4 print:gap-0 print:bg-white print:p-0">
         {/* Hero */}
         <header className="card p-5 text-center print:hidden">
-          <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-brand-100 text-brand-700">
-            <CheckCircle2 className="h-7 w-7" />
-          </div>
-          <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-ink-900">
-            Payment successful
-          </h1>
-          <p className="mt-1 text-sm text-ink-500">
-            <span className="font-mono font-semibold text-ink-700">{txn.id}</span> · {paymentMethodLabel(txn.method)} · {ctx.business.name}
-          </p>
+          <ReceiptHero
+            status={txn.status}
+            txnId={txn.id}
+            methodLabel={paymentMethodLabel(txn.method)}
+            businessName={ctx.business.name}
+            cardBalanceAfter={ctx.cardBalanceAfter}
+            cardNumber={ctx.card?.cardNumber}
+            memberName={ctx.member?.name}
+          />
           <button
             type="button"
             onClick={() => setPreviewOpen(true)}
@@ -113,6 +123,45 @@ export default function POSReceiptPage() {
             <Eye className="h-3.5 w-3.5" /> View full receipt
           </button>
         </header>
+
+        {/* Audit info — visible on screen only, shown in receipt via ReceiptDocument */}
+        <section className="card p-4 print:hidden">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+            Audit information
+          </div>
+          <dl className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+            <AuditRow icon={Clock4} label="Time" value={new Date(txn.createdAt).toLocaleString()} />
+            <AuditRow
+              icon={UserIcon}
+              label="Cashier"
+              value={ctx.operatorName ?? '—'}
+            />
+            {ctx.location && (
+              <AuditRow
+                icon={MapPin}
+                label="Location"
+                value={`${ctx.location.name}${ctx.location.code ? ` · ${ctx.location.code}` : ''}`}
+              />
+            )}
+            {ctx.terminal && (
+              <AuditRow
+                icon={MonitorPlay}
+                label="Terminal"
+                value={`${ctx.terminal.name}${ctx.terminal.code ? ` · ${ctx.terminal.code}` : ''}`}
+              />
+            )}
+            {ctx.card && (
+              <AuditRow
+                icon={CreditCard}
+                label="Card"
+                value={maskCardNumber(ctx.card.cardNumber)}
+              />
+            )}
+            {txn.reference && (
+              <AuditRow icon={Hash} label="Reference" value={txn.reference} mono />
+            )}
+          </dl>
+        </section>
 
         {/* Compact receipt preview (always visible) */}
         <section className="card flex flex-col items-center p-5 print:hidden">
@@ -194,8 +243,14 @@ export default function POSReceiptPage() {
           </button>
         </section>
 
-        <section className="print:hidden">
-          <button onClick={startNewOrder} className="btn-primary w-full rounded-pill py-3 text-base">
+        <section className="grid grid-cols-1 gap-2 sm:grid-cols-2 print:hidden">
+          <Link
+            to="/app/transactions"
+            className="btn-secondary py-3"
+          >
+            <ArrowUpRight className="h-4 w-4" /> View in transactions
+          </Link>
+          <button onClick={startNewOrder} className="btn-primary rounded-pill py-3 text-base">
             <RotateCcw className="h-4 w-4" /> New order
           </button>
         </section>
@@ -211,6 +266,132 @@ export default function POSReceiptPage() {
         onClose={() => setPreviewOpen(false)}
         onNewOrder={startNewOrder}
       />
+    </div>
+  )
+}
+
+function ReceiptHero({
+  status,
+  txnId,
+  methodLabel,
+  businessName,
+  cardBalanceAfter,
+  cardNumber,
+  memberName,
+}: {
+  status: Transaction['status']
+  txnId: string
+  methodLabel: string
+  businessName: string
+  cardBalanceAfter?: number
+  cardNumber?: string
+  memberName?: string
+}) {
+  const tone =
+    status === 'completed'
+      ? {
+          iconBg: 'bg-brand-100 text-brand-700',
+          Icon: CheckCircle2,
+          title: 'Payment successful',
+          subtitle: 'Card charged and receipt saved.',
+        }
+      : status === 'refunded' || status === 'partially_refunded'
+      ? {
+          iconBg: 'bg-amber-100 text-amber-700',
+          Icon: RotateCcw,
+          title: status === 'refunded' ? 'This order was refunded' : 'Partially refunded',
+          subtitle: 'The customer received money back. See audit details below.',
+        }
+      : status === 'failed'
+      ? {
+          iconBg: 'bg-rose-100 text-rose-700',
+          Icon: AlertOctagon,
+          title: 'Payment failed',
+          subtitle: 'The card was not charged. Retry the payment or use a different method.',
+        }
+      : status === 'pending'
+      ? {
+          iconBg: 'bg-sky-100 text-sky-700',
+          Icon: Clock4,
+          title: 'Payment pending',
+          subtitle: 'Waiting for confirmation from the payment processor.',
+        }
+      : {
+          iconBg: 'bg-indigo-100 text-indigo-700',
+          Icon: CheckCircle2,
+          title: statusLabel(status),
+          subtitle: 'See audit details below.',
+        }
+
+  const { Icon } = tone
+
+  return (
+    <>
+      <div className={`mx-auto grid h-14 w-14 place-items-center rounded-full ${tone.iconBg}`}>
+        <Icon className="h-7 w-7" />
+      </div>
+      <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-ink-900">
+        {tone.title}
+      </h1>
+      <p className="mt-1 text-sm text-ink-500">
+        <span className="font-mono font-semibold text-ink-700">{txnId}</span> · {methodLabel} · {businessName}
+      </p>
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+        <span
+          className={`inline-flex items-center gap-1 rounded-pill border px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider ${statusPillClass(status)}`}
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-current" />
+          {statusLabel(status)}
+        </span>
+        {memberName && (
+          <span className="inline-flex items-center gap-1 rounded-pill border border-ink-200 bg-white px-2.5 py-0.5 text-[11px] font-bold text-ink-700">
+            {memberName}
+          </span>
+        )}
+        {cardNumber && (
+          <span className="inline-flex items-center gap-1 rounded-pill border border-ink-200 bg-white px-2.5 py-0.5 font-mono text-[11px] font-bold text-ink-700">
+            <CreditCard className="h-3 w-3" /> {maskCardNumber(cardNumber)}
+          </span>
+        )}
+      </div>
+      {typeof cardBalanceAfter === 'number' && (
+        <div className="mx-auto mt-4 inline-flex items-center gap-2 rounded-2xl border border-ink-100 bg-ink-50/60 px-4 py-2 text-sm text-ink-700">
+          <Wallet className="h-4 w-4 text-ink-500" />
+          <span>
+            Card balance after this charge:{' '}
+            <span className="font-extrabold text-ink-900">{formatCurrency(cardBalanceAfter)}</span>
+          </span>
+        </div>
+      )}
+      <p className="mt-2 text-sm text-ink-500">{tone.subtitle}</p>
+    </>
+  )
+}
+
+function AuditRow({
+  icon: Icon,
+  label,
+  value,
+  mono = false,
+}: {
+  icon: typeof Clock4
+  label: string
+  value: string
+  mono?: boolean
+}) {
+  return (
+    <div className="flex items-start gap-2 rounded-xl border border-ink-100 bg-ink-50/40 px-3 py-2">
+      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-400" />
+      <div className="min-w-0">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-500">
+          {label}
+        </div>
+        <div
+          className={`truncate text-sm font-semibold text-ink-900 ${mono ? 'font-mono' : ''}`}
+        >
+          {value}
+        </div>
+      </div>
     </div>
   )
 }

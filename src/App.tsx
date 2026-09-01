@@ -96,22 +96,134 @@ export default function App() {
           }
         >
           <Route index element={<Navigate to="pos" replace />} />
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="pos" element={<POSPage />} />
-          <Route path="pos/payment" element={<POSPaymentPage />} />
-          <Route path="pos/receipt/:txnId" element={<POSReceiptPage />} />
-          <Route path="products" element={<ProductsPage />} />
-          <Route path="categories" element={<CategoriesPage />} />
-          <Route path="orders" element={<OrdersPage />} />
-          <Route path="users" element={<UsersPage />} />
-          <Route path="users/:memberId" element={<UserDetailsPage />} />
-          <Route path="cards" element={<CardsPage />} />
-          <Route path="cards/:cardId" element={<CardDetailsPage />} />
-          <Route path="deposits" element={<DepositsPage />} />
-          <Route path="deposit-requests" element={<DepositRequestsPage />} />
-          <Route path="transactions" element={<TransactionsPage />} />
-          <Route path="reports" element={<ReportsPage />} />
-          <Route path="analytics" element={<AnalyticsPage />} />
+          <Route
+            path="dashboard"
+            element={
+              <RequirePermission anyOf={['dashboard.view']}>
+                <DashboardPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="pos"
+            element={
+              <RequirePermission anyOf={['pos.use']}>
+                <POSPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="pos/payment"
+            element={
+              <RequirePermission anyOf={['pos.use']}>
+                <POSPaymentPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="pos/receipt/:txnId"
+            element={
+              <RequirePermission anyOf={['transactions.view', 'pos.use']}>
+                <POSReceiptPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="products"
+            element={
+              <RequirePermission anyOf={['products.view']}>
+                <ProductsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="categories"
+            element={
+              <RequirePermission anyOf={['categories.view']}>
+                <CategoriesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="orders"
+            element={
+              <RequirePermission anyOf={['orders.view']}>
+                <OrdersPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="users"
+            element={
+              <RequirePermission anyOf={['users.view']}>
+                <UsersPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="users/:memberId"
+            element={
+              <RequirePermission anyOf={['users.view']}>
+                <UserDetailsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="cards"
+            element={
+              <RequirePermission anyOf={['cards.view']}>
+                <CardsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="cards/:cardId"
+            element={
+              <RequirePermission anyOf={['cards.view']}>
+                <CardDetailsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="deposits"
+            element={
+              <RequirePermission anyOf={['deposits.view']}>
+                <DepositsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="deposit-requests"
+            element={
+              <RequirePermission anyOf={['depositRequests.view']}>
+                <DepositRequestsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="transactions"
+            element={
+              <RequirePermission anyOf={['transactions.view']}>
+                <TransactionsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="reports"
+            element={
+              <RequirePermission anyOf={['reports.view']}>
+                <ReportsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="analytics"
+            element={
+              <RequirePermission anyOf={['analytics.view']}>
+                <AnalyticsPage />
+              </RequirePermission>
+            }
+          />
           <Route
             path="staff"
             element={
@@ -146,9 +258,20 @@ export default function App() {
           />
           <Route
             path="notifications"
-            element={<NotificationsPage />}
+            element={
+              <RequirePermission anyOf={['notifications.view']}>
+                <NotificationsPage />
+              </RequirePermission>
+            }
           />
-          <Route path="settings" element={<SettingsPage />} />
+          <Route
+            path="settings"
+            element={
+              <RequirePermission anyOf={['settings.view']}>
+                <SettingsPage />
+              </RequirePermission>
+            }
+          />
         </Route>
         <Route path="/u/identify" element={<PortalLandingPage />} />
         <Route path="/u/:slug" element={<PortalDashboardPage />} />

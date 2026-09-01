@@ -605,8 +605,8 @@ function ReportResultsPanel({
         />
       ) : (
         <div className="card overflow-hidden p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="scroll-soft overflow-x-auto">
+            <table className="w-full min-w-[480px] text-sm">
               <thead>
                 <tr className="border-b border-ink-100 bg-ink-50/60 text-left text-[10px] font-bold uppercase tracking-wider text-ink-500">
                   {result.columns.map((c, i) => (

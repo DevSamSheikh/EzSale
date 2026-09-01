@@ -9,7 +9,6 @@ import {
   Play,
   Plus,
   RotateCcw,
-  Search,
   Shield,
   UserPlus,
   Users,
@@ -17,6 +16,8 @@ import {
 } from 'lucide-react'
 import { PageHeader, EmptyState, StatCard } from '../../components/Primitives'
 import { DrawerShell } from '../../components/Drawer'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { ToastViewport, useToast } from '../../components/Toast'
 import {
   FilterSearchInput,
   FilterSelect,
@@ -34,6 +35,7 @@ import {
   statusLabel,
   statusPillClass,
   summarizeRole,
+  updateOperator,
 } from '../../operators-store'
 import { getLocations } from '../../orders-store'
 import { playCue } from '../../audio'
@@ -60,7 +62,8 @@ export default function OperatorsPage() {
   const [page, setPage] = useState({ page: 1, pageSize: 10 })
   const [editing, setEditing] = useState<Operator | null>(null)
   const [addOpen, setAddOpen] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
+  const toast = useToast()
+  const [statusConfirm, setStatusConfirm] = useState<{ op: Operator; status: StaffStatus } | null>(null)
 
   useEffect(() => {
     function onFocus() {
@@ -139,8 +142,7 @@ export default function OperatorsPage() {
   const visible = filtered.slice(start, start + page.pageSize)
 
   function flash(msg: string) {
-    setToast(msg)
-    setTimeout(() => setToast(null), 2200)
+    toast.success(msg)
     setTick((t) => t + 1)
   }
 
@@ -257,11 +259,7 @@ export default function OperatorsPage() {
           setEditing(op)
           playCue('tap')
         }}
-        onStatus={(op, status) => {
-          setOperatorStatus(op.id, status)
-          flash(`${op.name} marked as ${statusLabel(status)}.`)
-          playCue(status === 'active' ? 'success' : 'warning')
-        }}
+        onStatus={(op, status) => setStatusConfirm({ op, status })}
         canManage={canManage}
       />
 
@@ -290,14 +288,43 @@ export default function OperatorsPage() {
         />
       )}
 
-      {toast && (
-        <div className="pointer-events-none fixed bottom-4 left-1/2 z-[60] -translate-x-1/2">
-          <div className="inline-flex items-center gap-2 rounded-full bg-ink-900 px-4 py-2 text-sm font-semibold text-white shadow-pop">
-            <Plus className="h-4 w-4 text-brand-400" />
-            {toast}
-          </div>
-        </div>
+      {toast.toasts.length > 0 && (
+        <ToastViewport toasts={toast.toasts} onDismiss={toast.dismiss} />
       )}
+
+      <ConfirmDialog
+        open={statusConfirm !== null}
+        title={
+          statusConfirm?.status === 'active'
+            ? `Reactivate ${statusConfirm.op.name}?`
+            : statusConfirm?.status === 'invited'
+            ? `Resend invite to ${statusConfirm?.op.name ?? ''}?`
+            : `Suspend ${statusConfirm?.op.name ?? ''}?`
+        }
+        description={
+          statusConfirm?.status === 'active'
+            ? 'They\u2019ll be able to sign in again immediately.'
+            : statusConfirm?.status === 'invited'
+            ? 'This resets their invitation so they can accept it again.'
+            : 'They won\u2019t be able to sign in until you reactivate them.'
+        }
+        confirmLabel={
+          statusConfirm?.status === 'active'
+            ? 'Reactivate'
+            : statusConfirm?.status === 'invited'
+            ? 'Resend invite'
+            : 'Suspend'
+        }
+        tone={statusConfirm?.status === 'suspended' ? 'danger' : 'warning'}
+        onConfirm={() => {
+          if (!statusConfirm) return
+          setOperatorStatus(statusConfirm.op.id, statusConfirm.status)
+          flash(`${statusConfirm.op.name} marked as ${statusLabel(statusConfirm.status)}.`)
+          playCue(statusConfirm.status === 'active' ? 'success' : 'warning')
+          setStatusConfirm(null)
+        }}
+        onClose={() => setStatusConfirm(null)}
+      />
     </div>
   )
 }
@@ -338,8 +365,8 @@ function OperatorsTable({
   }
   return (
     <div className="card overflow-hidden p-0">
-      <div className="overflow-x-auto">
-        <table className="w-full table-fixed text-sm">
+      <div className="scroll-soft overflow-x-auto">
+        <table className="w-full min-w-[860px] table-fixed text-sm">
           <colgroup>
             <col className="w-[260px]" />
             <col className="w-[170px]" />
@@ -705,7 +732,7 @@ function EditOperatorDrawer({
   const [locationIds, setLocationIds] = useState<string[]>(operator.locationIds)
 
   function submit() {
-    updateOperatorLocal(operator.id, {
+    updateOperator(operator.id, {
       name: name.trim(),
       email: email.trim().toLowerCase(),
       phone: phone.trim() || undefined,
@@ -812,11 +839,6 @@ function EditOperatorDrawer({
   )
 }
 
-// Local import wrapper to avoid duplicate top-level imports
-import { updateOperator as updateOperatorLocal } from '../../operators-store'
-
-// ---- helpers ------------------------------------------------------------
-
 function relTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const min = Math.round(diff / 60000)
@@ -828,6 +850,3 @@ function relTime(iso: string): string {
   if (d < 30) return `${d}d ago`
   return new Date(iso).toLocaleDateString()
 }
-
-// Search import to satisfy some bundlers — keep at the end so it never affects rendering
-void Search

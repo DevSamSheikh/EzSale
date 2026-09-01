@@ -5,11 +5,8 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Ban,
-  Check,
   CheckCircle2,
-  Copy,
   CreditCard,
-  ExternalLink,
   Hash,
   KeyRound,
   Lock,
@@ -24,6 +21,9 @@ import {
   X,
 } from 'lucide-react'
 import { PageHeader } from '../../components/Primitives'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { ProfileUrlBlock } from '../../components/ProfileUrlBlock'
+import { ToastViewport, useToast } from '../../components/Toast'
 import {
   activateCard,
   blockCard,
@@ -35,7 +35,6 @@ import {
   getCardDeposits,
   getCardTransactions,
   getMember,
-  getMemberBySlug,
   isCardUsable,
   maskCardNumber,
   replaceCard,
@@ -127,17 +126,12 @@ export default function CardDetailsPage() {
   const [blockOpen, setBlockOpen] = useState(false)
   const [unassignOpen, setUnassignOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
+  const toast = useToast()
+  const [statusConfirm, setStatusConfirm] = useState<'active' | 'inactive' | null>(null)
 
   useEffect(() => {
     refresh()
   }, [cardId])
-
-  useEffect(() => {
-    if (!toast) return
-    const t = setTimeout(() => setToast(null), 2200)
-    return () => clearTimeout(t)
-  }, [toast])
 
   function refresh() {
     if (!cardId) return
@@ -153,8 +147,8 @@ export default function CardDetailsPage() {
   const isExpired =
     card && new Date(card.expiresAt).getTime() < Date.now()
 
-  function notify(msg: string) {
-    setToast(msg)
+  function notify(msg: string, tone: 'success' | 'info' | 'warning' = 'success') {
+    toast.push({ tone, title: msg })
   }
 
   function handleActivate() {
@@ -252,12 +246,12 @@ export default function CardDetailsPage() {
               <ArrowLeft className="h-4 w-4" /> Back to cards
             </Link>
             {card.status === 'active' && (
-              <button onClick={handleDeactivate} className="btn-secondary">
+              <button onClick={() => setStatusConfirm('inactive')} className="btn-secondary">
                 <Pause className="h-4 w-4" /> Deactivate
               </button>
             )}
             {card.status === 'inactive' && (
-              <button onClick={handleActivate} className="btn-secondary">
+              <button onClick={() => setStatusConfirm('active')} className="btn-secondary">
                 <Play className="h-4 w-4" /> Activate
               </button>
             )}
@@ -351,7 +345,11 @@ export default function CardDetailsPage() {
               their balance from any device.
             </p>
             {member ? (
-              <PortalLinkBlock memberSlug={member.slug ?? member.id} />
+              <ProfileUrlBlock
+                slug={member.slug ?? member.id}
+                label="Member portal"
+                hint="The cardholder can sign in with their card and a 4-digit password (1234 is the demo default — ask them to change it after first use)."
+              />
             ) : (
               <div className="mt-3 rounded-xl border border-dashed border-ink-200 bg-ink-50/40 p-3 text-[11px] text-ink-500">
                 Assign this card to a member to generate a portal link.
@@ -502,14 +500,31 @@ export default function CardDetailsPage() {
         />
       )}
 
-      {toast && (
-        <div className="pointer-events-none fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
-          <div className="inline-flex items-center gap-2 rounded-pill bg-ink-900 px-4 py-2 text-sm font-semibold text-white shadow-pop">
-            <CheckCircle2 className="h-4 w-4 text-brand-400" />
-            {toast}
-          </div>
-        </div>
+      {toast.toasts.length > 0 && (
+        <ToastViewport toasts={toast.toasts} onDismiss={toast.dismiss} />
       )}
+
+      <ConfirmDialog
+        open={statusConfirm !== null}
+        title={
+          statusConfirm === 'active'
+            ? `Activate ${maskCardNumber(card.cardNumber)}?`
+            : `Deactivate ${maskCardNumber(card.cardNumber)}?`
+        }
+        description={
+          statusConfirm === 'active'
+            ? 'The cardholder will be able to use this card again immediately.'
+            : 'The card will be paused and can\u2019t be used until you activate it again.'
+        }
+        confirmLabel={statusConfirm === 'active' ? 'Activate' : 'Deactivate'}
+        tone="warning"
+        onConfirm={() => {
+          if (statusConfirm === 'active') handleActivate()
+          else if (statusConfirm === 'inactive') handleDeactivate()
+          setStatusConfirm(null)
+        }}
+        onClose={() => setStatusConfirm(null)}
+      />
     </div>
   )
 }
@@ -730,7 +745,7 @@ function DrawerShell({
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-ink-900/50" onClick={onClose} />
-      <div className="absolute inset-y-0 right-0 flex w-full max-w-md animate-[slideIn_0.25s_ease-out] flex-col overflow-hidden bg-white shadow-pop">
+      <div className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] animate-[slideUp_0.25s_ease-out] flex-col overflow-hidden rounded-t-3xl bg-white shadow-pop md:inset-y-0 md:right-0 md:left-auto md:max-h-full md:w-full md:max-w-md md:animate-[slideIn_0.25s_ease-out] md:rounded-none">
         <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4">
           <div>
             <div className="text-base font-bold text-ink-900">{title}</div>
@@ -747,7 +762,6 @@ function DrawerShell({
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">{children}</div>
         <div className="border-t border-ink-100 p-4">{footer}</div>
       </div>
-      <style>{`@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
     </div>
   )
 }
@@ -932,7 +946,7 @@ function BlockDrawer({
           </button>
           <button
             onClick={() => onSubmit(reason)}
-            className="inline-flex flex-1 items-center justify-center gap-2 rounded-pill bg-rose-500 py-3 text-sm font-bold text-white shadow-soft hover:bg-rose-600"
+            className="btn-danger flex-1 py-3"
           >
             <ShieldOff className="h-4 w-4" /> Block card
           </button>
@@ -1009,64 +1023,6 @@ function ConfirmDrawer({
         <p className="max-w-sm text-sm text-ink-700">{description}</p>
       </div>
     </DrawerShell>
-  )
-}
-
-function PortalLinkBlock({ memberSlug }: { memberSlug: string }) {
-  const [copied, setCopied] = useState(false)
-  const member = getMemberBySlug(memberSlug)
-  const slug = member?.slug ?? memberSlug
-  const path = `/u/${slug}`
-  const url =
-    typeof window !== 'undefined' ? `${window.location.origin}${path}` : path
-
-  function copy() {
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard
-        .writeText(url)
-        .then(() => {
-          setCopied(true)
-          playCue('success')
-          setTimeout(() => setCopied(false), 1800)
-        })
-        .catch(() => {
-          setCopied(false)
-        })
-    }
-  }
-
-  return (
-    <div className="mt-3 space-y-2">
-      <div className="flex items-center gap-2 rounded-xl border border-ink-200 bg-ink-50/40 px-3 py-2">
-        <Hash className="h-3.5 w-3.5 shrink-0 text-ink-400" />
-        <code className="min-w-0 flex-1 truncate text-xs text-ink-700">{url}</code>
-        <button
-          type="button"
-          onClick={copy}
-          className={
-            copied
-              ? 'inline-flex h-7 items-center gap-1 rounded-pill bg-emerald-500 px-2.5 text-[10px] font-bold uppercase tracking-wider text-white'
-              : 'inline-flex h-7 items-center gap-1 rounded-pill bg-ink-900 px-2.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-ink-800'
-          }
-        >
-          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-          {copied ? 'Copied' : 'Copy'}
-        </button>
-      </div>
-      <div className="flex items-center justify-between gap-2">
-        <Link
-          to={path}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-ink-700 hover:underline"
-        >
-          <ExternalLink className="h-3 w-3" /> Open as customer
-        </Link>
-        <span className="text-[11px] text-ink-500">
-          Default password: <span className="font-mono">{member?.password ?? '1234'}</span>
-        </span>
-      </div>
-    </div>
   )
 }
 

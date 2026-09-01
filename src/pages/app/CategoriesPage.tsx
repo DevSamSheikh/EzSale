@@ -20,6 +20,8 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { PageHeader, StatCard } from '../../components/Primitives'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { ToastViewport, useToast } from '../../components/Toast'
 import {
   CATEGORY_ICONS,
   CATEGORIES_UPDATED_EVENT,
@@ -137,7 +139,8 @@ export default function CategoriesPage() {
   const [editor, setEditor] = useState<EditorState>({ open: false })
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Category | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
+  const [archiveConfirm, setArchiveConfirm] = useState<Category | null>(null)
+  const toast = useToast()
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
 
@@ -157,12 +160,6 @@ export default function CategoriesPage() {
       window.removeEventListener(CATEGORIES_UPDATED_EVENT, onUpdate)
     }
   }, [])
-
-  useEffect(() => {
-    if (!toast) return
-    const t = setTimeout(() => setToast(null), 1800)
-    return () => clearTimeout(t)
-  }, [toast])
 
   // Counts per category (for the "products" column)
   const productCounts = useMemo(() => {
@@ -236,7 +233,7 @@ export default function CategoriesPage() {
     next.splice(sourceIdx, 1)
     next.splice(targetIdx, 0, sourceId)
     reorderCategories(next)
-    setToast('Order updated')
+    toast.success('Order updated')
     playCue('success')
   }
 
@@ -274,7 +271,7 @@ export default function CategoriesPage() {
         color: form.color || undefined,
         businessTypes: form.businessTypes.length > 0 ? form.businessTypes : undefined,
       })
-      setToast(`Saved "${updated?.name ?? 'category'}"`)
+      toast.success(`Saved "${updated?.name ?? 'category'}"`)
     } else {
       const created = createCategory({
         name: form.name.trim() || 'New category',
@@ -284,7 +281,7 @@ export default function CategoriesPage() {
         color: form.color || undefined,
         businessTypes: form.businessTypes.length > 0 ? form.businessTypes : undefined,
       })
-      setToast(`Created "${created.name}"`)
+      toast.success(`Created "${created.name}"`)
     }
     playCue('success')
     closeEditor()
@@ -294,15 +291,21 @@ export default function CategoriesPage() {
     const next: CategoryStatus = c.status === 'active' ? 'hidden' : 'active'
     setCategoryStatus(c.id, next)
     setOpenMenu(null)
-    setToast(next === 'active' ? `Shown "${c.name}"` : `Hidden "${c.name}"`)
+    toast.info(next === 'active' ? `Shown "${c.name}"` : `Hidden "${c.name}"`)
     playCue('tap')
   }
 
   function handleArchive(c: Category) {
-    setCategoryStatus(c.id, 'archived')
+    setArchiveConfirm(c)
     setOpenMenu(null)
-    setToast(`Archived "${c.name}"`)
+  }
+
+  function commitArchive() {
+    if (!archiveConfirm) return
+    setCategoryStatus(archiveConfirm.id, 'archived')
+    toast.info(`Archived "${archiveConfirm.name}"`)
     playCue('tap')
+    setArchiveConfirm(null)
   }
 
   function handleShift(c: Category, dir: -1 | 1) {
@@ -318,7 +321,7 @@ export default function CategoriesPage() {
   function confirmDeleteNow() {
     if (!confirmDelete) return
     deleteCategory(confirmDelete.id)
-    setToast(`Deleted "${confirmDelete.name}"`)
+    toast.warning(`Deleted "${confirmDelete.name}"`)
     playCue('warning')
     setConfirmDelete(null)
   }
@@ -488,20 +491,30 @@ export default function CategoriesPage() {
       )}
 
       {confirmDelete && (
-        <ConfirmModal
+        <ConfirmDialog
+          open={confirmDelete !== null}
           title={`Delete "${confirmDelete.name}"?`}
           description="Products using this category will keep the name as plain text but it will no longer appear in the category list or POS menu."
           confirmLabel="Delete category"
+          tone="danger"
           onConfirm={confirmDeleteNow}
-          onCancel={() => setConfirmDelete(null)}
+          onClose={() => setConfirmDelete(null)}
         />
       )}
 
-      {toast && (
-        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-pill bg-ink-900 px-4 py-2 text-sm font-semibold text-white shadow-pop">
-          {toast}
-        </div>
+      {archiveConfirm && (
+        <ConfirmDialog
+          open={archiveConfirm !== null}
+          title={`Archive "${archiveConfirm.name}"?`}
+          description="Archived categories are hidden from the POS menu but stay in the catalog. You can restore them later."
+          confirmLabel="Archive category"
+          tone="warning"
+          onConfirm={commitArchive}
+          onClose={() => setArchiveConfirm(null)}
+        />
       )}
+
+      <ToastViewport toasts={toast.toasts} onDismiss={toast.dismiss} />
     </div>
   )
 }
@@ -546,8 +559,8 @@ function CategoriesList({
   onDragEnd: () => void
 }) {
   return (
-    <div className="mt-4 overflow-x-auto rounded-2xl border border-ink-100">
-      <table className="w-full text-sm">
+    <div className="mt-4 scroll-soft overflow-x-auto rounded-2xl border border-ink-100">
+      <table className="w-full min-w-[640px] text-sm">
         <thead className="bg-ink-50/50 text-left text-[11px] uppercase tracking-wide text-ink-500">
           <tr>
             <th className="w-10 px-3 py-2.5" />
@@ -1039,7 +1052,7 @@ function CategoryEditorModal({
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-ink-900/50" onClick={onClose} />
-      <div className="absolute inset-y-0 right-0 flex w-full max-w-xl animate-[slideIn_0.25s_ease-out] flex-col overflow-hidden bg-white shadow-pop">
+      <div className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] animate-[slideUp_0.25s_ease-out] flex-col overflow-hidden rounded-t-3xl bg-white shadow-pop md:inset-y-0 md:right-0 md:left-auto md:max-h-full md:w-full md:max-w-xl md:animate-[slideIn_0.25s_ease-out] md:rounded-none">
         <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4">
           <div>
             <div className="text-base font-bold text-ink-900">
@@ -1255,42 +1268,6 @@ function CategoryEditorModal({
               )}
             </button>
           </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Confirm modal
-// ---------------------------------------------------------------------------
-
-function ConfirmModal({
-  title,
-  description,
-  confirmLabel,
-  onConfirm,
-  onCancel,
-}: {
-  title: string
-  description: string
-  confirmLabel: string
-  onConfirm: () => void
-  onCancel: () => void
-}) {
-  return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-ink-900/50" onClick={onCancel} />
-      <div className="absolute left-1/2 top-1/2 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-5 shadow-pop">
-        <div className="text-base font-bold text-ink-900">{title}</div>
-        <p className="mt-1 text-sm text-ink-500">{description}</p>
-        <div className="mt-4 flex items-center gap-2">
-          <button onClick={onCancel} className="btn-secondary flex-1">
-            Cancel
-          </button>
-          <button onClick={onConfirm} className="btn-danger flex-1">
-            {confirmLabel}
-          </button>
         </div>
       </div>
     </div>

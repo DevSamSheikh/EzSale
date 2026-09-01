@@ -38,8 +38,68 @@
 @tailwind utilities;
 
 @layer utilities {
+  /* Shared keyframes for drawers / bottom sheets. Defining them here means
+   * Tailwind's arbitrary value `animate-[slideIn_...]` resolves without an
+   * inline <style> in every page. */
+  @keyframes slideIn {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+  @keyframes slideUp {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+  @keyframes sheetUp {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
   .pos-canvas {
     height: calc(100dvh - 1.5rem);
+  }
+  /* Touch-friendly tap target: minimum 44x44 hit area without affecting the
+   * visual size. The wrapping element keeps its layout, while the inner
+   * padding guarantees the iOS HIG / WCAG 2.5.5 minimum target size. */
+  .touch-target {
+    position: relative;
+  }
+  .touch-target::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    min-width: 44px;
+    min-height: 44px;
+  }
+  /* Safe-area padding for fixed bottom UI on iOS. */
+  .pb-safe {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+  .pt-safe {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+  /* Horizontal scroll for table-like content that needs to keep its
+   * desktop column structure on small screens. */
+  .scroll-soft {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .scroll-soft::-webkit-scrollbar {
+    height: 6px;
+  }
+  .scroll-soft::-webkit-scrollbar-thumb {
+    background-color: #d5d8dd;
+    border-radius: 9999px;
   }
   .pos-scroll {
     scrollbar-width: thin;

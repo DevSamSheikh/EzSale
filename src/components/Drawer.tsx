@@ -14,11 +14,11 @@ export interface DrawerShellProps {
 }
 
 const SIZE: Record<NonNullable<DrawerShellProps['size']>, string> = {
-  sm: 'w-full sm:max-w-md sm:w-[75%]',
-  md: 'w-full sm:max-w-lg sm:w-[75%]',
-  lg: 'w-full sm:max-w-2xl sm:w-[75%]',
-  xl: 'w-full sm:max-w-[1100px] sm:w-[75%]',
-  full: 'w-full sm:w-[75%]',
+  sm: 'w-full md:max-w-md md:w-[75%]',
+  md: 'w-full md:max-w-lg md:w-[75%]',
+  lg: 'w-full md:max-w-2xl md:w-[75%]',
+  xl: 'w-full md:max-w-[1100px] md:w-[75%]',
+  full: 'w-full md:w-[75%]',
 }
 
 export function DrawerShell({
@@ -46,9 +46,9 @@ export function DrawerShell({
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-ink-900/50 backdrop-blur-[1px]" onClick={onClose} />
       <div
-        className={`absolute inset-y-0 right-0 flex w-full ${SIZE[size]} animate-[slideIn_0.25s_ease-out] flex-col overflow-hidden bg-white shadow-pop`}
+        className={`absolute inset-x-0 bottom-0 flex max-h-[92dvh] animate-[slideUp_0.25s_ease-out] flex-col overflow-hidden rounded-t-3xl bg-white shadow-pop md:inset-y-0 md:right-0 md:left-auto md:max-h-full md:w-full ${SIZE[size]} md:animate-[slideIn_0.25s_ease-out] md:rounded-none`}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-ink-100 bg-white/95 px-6 py-4 backdrop-blur sm:px-7">
+        <div className="flex items-start justify-between gap-3 border-b border-ink-100 bg-white/95 px-4 py-3 backdrop-blur sm:px-6 sm:py-4 md:px-7">
           <div className="min-w-0 flex-1">
             <div className="truncate text-base font-bold text-ink-900 sm:text-lg">
               {title}
@@ -66,16 +66,15 @@ export function DrawerShell({
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto bg-ink-50/30 px-6 py-5 sm:px-7">
+        <div className="flex-1 overflow-y-auto bg-ink-50/30 px-4 py-4 sm:px-6 sm:py-5 md:px-7">
           {children}
         </div>
         {footer && (
-          <div className="border-t border-ink-100 bg-white px-6 py-4 sm:px-7">
+          <div className="border-t border-ink-100 bg-white px-4 py-3 sm:px-6 sm:py-4 md:px-7">
             {footer}
           </div>
         )}
       </div>
-      <style>{`@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
     </div>
   )
 }

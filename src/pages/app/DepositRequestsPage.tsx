@@ -24,6 +24,8 @@ import {
   X,
 } from 'lucide-react'
 import { PageHeader, StatCard, type StatTone } from '../../components/Primitives'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { ToastViewport, useToast } from '../../components/Toast'
 import {
   approveDepositRequest,
   cancelDepositRequest,
@@ -112,23 +114,18 @@ export default function DepositRequestsPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<PageSize>(16)
   const [loading, setLoading] = useState(true)
-  const [toast, setToast] = useState<string | null>(null)
+  const toast = useToast()
   const [error, setError] = useState<string | null>(null)
   const [reviewing, setReviewing] = useState<DepositRequest | null>(null)
   const [approving, setApproving] = useState(false)
   const [rejecting, setRejecting] = useState(false)
+  const [cancelConfirm, setCancelConfirm] = useState<DepositRequest | null>(null)
   const [approvalResult, setApprovalResult] =
     useState<ApproveDepositRequestResult | null>(null)
 
   useEffect(() => {
     refresh()
   }, [])
-
-  useEffect(() => {
-    if (!toast) return
-    const t = setTimeout(() => setToast(null), 2400)
-    return () => clearTimeout(t)
-  }, [toast])
 
   function refresh() {
     setLoading(true)
@@ -200,8 +197,8 @@ export default function DepositRequestsPage() {
     return filtered.slice(start, start + pageSize)
   }, [filtered, safePage, pageSize])
 
-  function notify(msg: string) {
-    setToast(msg)
+  function notify(msg: string, tone: 'success' | 'info' | 'warning' = 'success') {
+    toast.push({ tone, title: msg })
   }
 
   function openReview(req: DepositRequest) {
@@ -230,7 +227,10 @@ export default function DepositRequestsPage() {
       }
       setApprovalResult(result)
       refresh()
-      notify(`Approved ${currency(result.deposit.amount)} for ${result.deposit.by ?? 'member'}.`)
+      notify(
+        `Approved ${currency(result.deposit.amount)} for ${result.deposit.by ?? 'member'}.`,
+        'success',
+      )
       playCue('success')
     } catch (e) {
       setError('An unexpected error occurred while approving the request.')
@@ -254,7 +254,7 @@ export default function DepositRequestsPage() {
       }
       closeReview()
       refresh()
-      notify('Deposit request rejected.')
+      notify('Deposit request rejected.', 'warning')
       playCue('info')
     } catch (e) {
       setError('An unexpected error occurred while rejecting the request.')
@@ -265,10 +265,16 @@ export default function DepositRequestsPage() {
   }
 
   function handleCancelRequest(req: DepositRequest) {
-    cancelDepositRequest(req.id)
+    setCancelConfirm(req)
+  }
+
+  function commitCancel() {
+    if (!cancelConfirm) return
+    cancelDepositRequest(cancelConfirm.id)
     refresh()
-    notify('Request cancelled.')
+    notify('Request cancelled.', 'info')
     playCue('info')
+    setCancelConfirm(null)
   }
 
   const isEmpty = !loading && filtered.length === 0
@@ -360,7 +366,7 @@ export default function DepositRequestsPage() {
             <div
               role="tablist"
               aria-label="View mode"
-              className="inline-flex items-center rounded-pill border border-ink-200 bg-white p-0.5"
+              className="hidden sm:inline-flex items-center rounded-pill border border-ink-200 bg-white p-0.5"
             >
               <button
                 role="tab"
@@ -451,14 +457,18 @@ export default function DepositRequestsPage() {
         />
       )}
 
-      {toast && (
-        <div className="pointer-events-none fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
-          <div className="inline-flex items-center gap-2 rounded-pill bg-ink-900 px-4 py-2 text-sm font-semibold text-white shadow-pop">
-            <CheckCircle2 className="h-4 w-4 text-brand-400" />
-            {toast}
-          </div>
-        </div>
-      )}
+      <ToastViewport toasts={toast.toasts} onDismiss={toast.dismiss} />
+
+      <ConfirmDialog
+        open={cancelConfirm !== null}
+        title="Cancel this deposit request?"
+        description="The member will have to submit a new request if they change their mind."
+        impact={cancelConfirm ? `${currency(cancelConfirm.amount)} · ${paymentMethodLabel(cancelConfirm.method)}` : undefined}
+        confirmLabel="Cancel request"
+        tone="danger"
+        onConfirm={commitCancel}
+        onClose={() => setCancelConfirm(null)}
+      />
     </div>
   )
 }
@@ -521,9 +531,9 @@ function RequestsTable({
   onCancel: (r: DepositRequest) => void
 }) {
   return (
-    <div className="card p-0">
+    <div className="card scroll-soft p-0">
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[640px] text-sm">
           <thead className="text-left text-xs uppercase tracking-wide text-ink-400">
             <tr className="border-b border-ink-100">
               <th className="px-5 py-3 font-semibold">Member</th>
@@ -827,7 +837,7 @@ function ReviewDrawer({
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-ink-900/50" onClick={onClose} />
-      <div className="absolute inset-y-0 right-0 flex w-full max-w-md animate-[slideIn_0.25s_ease-out] flex-col overflow-hidden bg-white shadow-pop">
+      <div className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] animate-[slideUp_0.25s_ease-out] flex-col overflow-hidden rounded-t-3xl bg-white shadow-pop md:inset-y-0 md:right-0 md:left-auto md:max-h-full md:w-full md:max-w-md md:animate-[slideIn_0.25s_ease-out] md:rounded-none">
         <div className="flex items-start justify-between border-b border-ink-100 px-5 py-4">
           <div>
             <div className="flex items-center gap-2">
@@ -983,7 +993,7 @@ function ReviewDrawer({
               <button
                 onClick={() => onReject(reason)}
                 disabled={rejecting || approving}
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-pill border border-rose-200 bg-rose-50 px-3 py-3 text-sm font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                className="btn-danger flex-1 py-3"
               >
                 {rejecting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -1012,7 +1022,6 @@ function ReviewDrawer({
           )}
         </div>
       </div>
-      <style>{`@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
     </div>
   )
 }

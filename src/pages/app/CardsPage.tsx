@@ -19,7 +19,8 @@ import {
   Wallet,
   X,
 } from 'lucide-react'
-import { PageHeader, StatCard } from '../../components/Primitives'
+import { EmptyState, PageHeader, StatCard } from '../../components/Primitives'
+import { ResponsiveTable, Field, FieldRow } from '../../components/ResponsiveTable'
 import {
   cardStatusLabel,
   cardTypeLabel,
@@ -33,6 +34,7 @@ import {
   TIERS,
 } from '../../card-store'
 import { getLocations } from '../../orders-store'
+import { formatCurrency } from '../../order-utils'
 import type {
   MembershipCard,
   MembershipCardStatus,
@@ -240,7 +242,7 @@ export default function CardsPage() {
         <StatCard
           variant="inline"
           label="Outstanding balance"
-          value={`$${stats.balance.toFixed(0)}`}
+          value={formatCurrency(stats.balance, '')}
           tone="brand"
         />
       </div>
@@ -335,7 +337,7 @@ export default function CardsPage() {
             <div
               role="tablist"
               aria-label="View mode"
-              className="inline-flex items-center rounded-pill border border-ink-200 bg-white p-0.5"
+              className="hidden sm:inline-flex items-center rounded-pill border border-ink-200 bg-white p-0.5"
             >
               <button
                 role="tab"
@@ -368,38 +370,37 @@ export default function CardsPage() {
         </div>
 
         {viewMode === 'list' ? (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-ink-100 text-[11px] uppercase tracking-wide text-ink-500">
-                  <th className="py-2 pr-4 font-semibold">Card</th>
-                  <th className="py-2 pr-4 font-semibold">Type</th>
-                  <th className="py-2 pr-4 font-semibold">Assigned to</th>
-                  <th className="py-2 pr-4 font-semibold">Status</th>
-                  <th className="py-2 pr-4 text-right font-semibold">Balance</th>
-                  <th className="py-2 pr-4 text-right font-semibold">Limits</th>
-                  <th className="py-2 pr-4 font-semibold">Issued</th>
-                  <th className="py-2 pr-4 font-semibold">Expires</th>
-                  <th className="py-2 pr-4 font-semibold">Last transaction</th>
-                  <th className="py-2 text-right font-semibold">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paged.length === 0 && (
-                  <tr>
-                    <td colSpan={10} className="py-10 text-center text-sm text-ink-500">
-                      No cards match the current filters.
-                    </td>
-                  </tr>
-                )}
-                {paged.map((c) => {
+          <div className="mt-4">
+            <ResponsiveTable
+              columns={[
+                { label: 'Card' },
+                { label: 'Type' },
+                { label: 'Assigned to' },
+                { label: 'Status' },
+                { label: 'Balance', className: 'text-right' },
+                { label: 'Limits', className: 'text-right' },
+                { label: 'Issued' },
+                { label: 'Expires' },
+                { label: 'Last transaction' },
+                { label: 'Actions', className: 'text-right' },
+              ]}
+              rows={paged}
+              rowKey={(c) => c.id}
+              mode="scroll"
+              minWidth="860px"
+              tableClassName="w-full text-left text-sm"
+              empty={
+                <EmptyState
+                  icon={<CreditCard className="h-7 w-7" />}
+                  title="No cards match the current filters"
+                  description="Try clearing the search or filters."
+                />
+              }
+              renderRow={(c) => {
                 const member = getMember(c.memberId)
                 const Icon = typeIcon(c.type)
                 return (
-                  <tr
-                    key={c.id}
-                    className="border-b border-ink-100 last:border-0 hover:bg-ink-50/60"
-                  >
+                  <>
                     <td className="py-3 pr-4">
                       <div className="flex items-center gap-2">
                         <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-ink-900 text-brand-400">
@@ -439,11 +440,11 @@ export default function CardsPage() {
                       <StatusPill status={c.status} />
                     </td>
                     <td className="py-3 pr-4 text-right">
-                      <div className="font-bold text-ink-900">${c.balance.toFixed(0)}</div>
+                      <div className="font-bold text-ink-900">{formatCurrency(c.balance, '')}</div>
                     </td>
                     <td className="py-3 pr-4 text-right text-[11px] text-ink-500">
-                      <div>${c.dailyLimit.toFixed(0)}/day</div>
-                      <div>${c.monthlyLimit.toFixed(0)}/mo</div>
+                      <div>{formatCurrency(c.dailyLimit, '')}/day</div>
+                      <div>{formatCurrency(c.monthlyLimit, '')}/mo</div>
                     </td>
                     <td className="py-3 pr-4 text-xs text-ink-700">{formatDate(c.issuedAt)}</td>
                     <td className="py-3 pr-4 text-xs text-ink-700">
@@ -462,32 +463,118 @@ export default function CardsPage() {
                       <div className="flex items-center justify-end gap-1">
                         <Link
                           to={`/app/cards/${c.id}`}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
                           title="View details"
+                          aria-label="View card details"
                         >
                           <ArrowDownToLine className="h-3.5 w-3.5 rotate-180" />
                         </Link>
                         <button
                           onClick={() => navigate(`/app/cards/${c.id}`)}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
                           title="Top up"
+                          aria-label="Top up card"
                         >
                           <Wallet className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </td>
-                  </tr>
+                  </>
                 )
-              })}
-            </tbody>
-          </table>
+              }}
+              renderCard={(c) => {
+                const member = getMember(c.memberId)
+                const Icon = typeIcon(c.type)
+                return (
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-ink-900 text-brand-400">
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <Link
+                          to={`/app/cards/${c.id}`}
+                          className="block truncate font-mono text-sm font-semibold text-ink-900 hover:underline"
+                        >
+                          {maskCardNumber(c.cardNumber)}
+                        </Link>
+                        <div className="truncate text-[11px] text-ink-500">
+                          {cardTypeLabel(c.type)} · {c.id}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="font-extrabold text-ink-900">{formatCurrency(c.balance, '')}</div>
+                        <div className="text-[10px] uppercase tracking-wide text-ink-400">
+                          Balance
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                      <StatusPill status={c.status} />
+                      <span className="rounded-pill border border-ink-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-ink-700">
+                        {cardTypeLabel(c.type)}
+                      </span>
+                    </div>
+                    <FieldRow className="mt-3">
+                      <Field label="Assigned to">
+                        {member ? (
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-ink-900">
+                              {member.name}
+                            </div>
+                            {member.email && (
+                              <div className="truncate text-[11px] text-ink-500">
+                                {member.email}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs italic text-ink-500">Unassigned</span>
+                        )}
+                      </Field>
+                      <Field label="Limits">
+                        <span className="text-xs">
+                          {formatCurrency(c.dailyLimit, '')}/day · {formatCurrency(c.monthlyLimit, '')}/mo
+                        </span>
+                      </Field>
+                      <Field label="Issued">{formatDate(c.issuedAt)}</Field>
+                      <Field label="Expires">
+                        <span className={isExpired(c) ? 'font-semibold text-rose-600' : ''}>
+                          {formatDate(c.expiresAt)}
+                        </span>
+                      </Field>
+                      <Field label="Last transaction">
+                        {formatRelative(c.lastTransactionAt)}
+                      </Field>
+                    </FieldRow>
+                    <div className="mt-3 flex items-center justify-end gap-2 border-t border-ink-100 pt-3">
+                      <Link
+                        to={`/app/cards/${c.id}`}
+                        className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-ink-200 bg-white px-3 text-xs font-semibold text-ink-700 hover:bg-ink-50"
+                      >
+                        <ArrowDownToLine className="h-3.5 w-3.5 rotate-180" /> Details
+                      </Link>
+                      <button
+                        onClick={() => navigate(`/app/cards/${c.id}`)}
+                        className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl bg-brand-500 px-3 text-xs font-bold text-ink-900 hover:bg-brand-400"
+                        style={{ color: 'rgb(var(--text-on-brand-rgb))' }}
+                      >
+                        <Wallet className="h-3.5 w-3.5" /> Top up
+                      </button>
+                    </div>
+                  </div>
+                )
+              }}
+            />
           </div>
         ) : (
-          <div className="mt-4">
+<div className="mt-4">
             {paged.length === 0 ? (
-              <div className="grid place-items-center rounded-2xl border border-dashed border-ink-200 bg-ink-50/40 px-6 py-14 text-center text-sm text-ink-500">
-                No cards match the current filters.
-              </div>
+              <EmptyState
+                icon={<CreditCard className="h-7 w-7" />}
+                title="No cards match the current filters"
+                description="Try clearing the search or filters."
+              />
             ) : (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {paged.map((c) => (
@@ -601,15 +688,15 @@ function CardTile({ card, onOpen }: { card: MembershipCard; onOpen: () => void }
       <div className="grid grid-cols-3 gap-2 border-t border-ink-100 pt-3 text-[11px]">
         <div>
           <div className="text-[10px] uppercase tracking-wide text-ink-400">Balance</div>
-          <div className="font-bold text-ink-900">${card.balance.toFixed(0)}</div>
+          <div className="font-bold text-ink-900">{formatCurrency(card.balance, '')}</div>
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wide text-ink-400">Daily</div>
-          <div className="font-semibold text-ink-700">${card.dailyLimit.toFixed(0)}</div>
+          <div className="font-semibold text-ink-700">{formatCurrency(card.dailyLimit, '')}</div>
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wide text-ink-400">Monthly</div>
-          <div className="font-semibold text-ink-700">${card.monthlyLimit.toFixed(0)}</div>
+          <div className="font-semibold text-ink-700">{formatCurrency(card.monthlyLimit, '')}</div>
         </div>
       </div>
 
@@ -827,7 +914,7 @@ function AddCardDrawer({
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-ink-900/50" onClick={onClose} />
-      <div className="absolute inset-y-0 right-0 flex w-full max-w-md animate-[slideIn_0.25s_ease-out] flex-col overflow-hidden bg-white shadow-pop">
+      <div className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] animate-[slideUp_0.25s_ease-out] flex-col overflow-hidden rounded-t-3xl bg-white shadow-pop md:inset-y-0 md:right-0 md:left-auto md:max-h-full md:w-full md:max-w-md md:animate-[slideIn_0.25s_ease-out] md:rounded-none">
         <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4">
           <div>
             <div className="text-base font-bold text-ink-900">Add a new card</div>
@@ -1042,8 +1129,6 @@ function AddCardDrawer({
           </div>
         </div>
       </div>
-
-      <style>{`@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
     </div>
   )
 }

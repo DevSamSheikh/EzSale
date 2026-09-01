@@ -919,7 +919,11 @@ function LineChart({
 
   return (
     <div className="w-full">
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-56 w-full" preserveAspectRatio="none">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="h-56 w-full"
+        preserveAspectRatio="xMidYMid meet"
+      >
         <defs>
           <linearGradient id="rev-area" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="#84eb0a" stopOpacity="0.35" />
@@ -1436,8 +1440,8 @@ function ComparisonSummary({
           <div className="text-xs text-ink-500">Current period vs previous period of equal length</div>
         </div>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+      <div className="scroll-soft overflow-x-auto">
+        <table className="w-full min-w-[480px] text-sm">
           <thead className="text-left text-xs uppercase tracking-wide text-ink-400">
             <tr>
               <th className="px-5 py-3 font-semibold">Metric</th>

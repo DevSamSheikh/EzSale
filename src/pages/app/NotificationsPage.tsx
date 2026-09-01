@@ -27,6 +27,8 @@ import {
   StatCard,
   EmptyState,
 } from '../../components/Primitives'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { useToast, ToastViewport } from '../../components/Toast'
 import {
   clearAllAdmin,
   deleteNotification,
@@ -139,7 +141,10 @@ export default function NotificationsPage() {
   const [category, setCategory] = useState<CategoryFilter>('all')
   const [readFilter, setReadFilter] = useState<'all' | 'unread' | 'read'>('all')
   const [activitySeverity, setActivitySeverity] = useState<'all' | ActivitySeverity>('all')
-  const [toast, setToast] = useState<string | null>(null)
+  const toast = useToast()
+  const [confirmMarkAll, setConfirmMarkAll] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<Notification | null>(null)
 
   // Run card health checks on mount so the page always reflects fresh data
   // (idempotent — re-notification is suppressed by localStorage flags).
@@ -193,8 +198,7 @@ export default function NotificationsPage() {
   }, [notifList, activityList])
 
   function flash(msg: string) {
-    setToast(msg)
-    setTimeout(() => setToast(null), 2200)
+    toast.success(msg)
     playCue('success')
   }
 
@@ -207,12 +211,7 @@ export default function NotificationsPage() {
           <>
             <button
               type="button"
-              onClick={() => {
-                if (window.confirm('Mark all admin notifications as read?')) {
-                  markAllAdminRead()
-                  flash('All notifications marked read.')
-                }
-              }}
+              onClick={() => setConfirmMarkAll(true)}
               className="btn-secondary"
               disabled={summary.unread === 0}
             >
@@ -220,16 +219,7 @@ export default function NotificationsPage() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                if (
-                  window.confirm(
-                    'Clear every admin notification? This cannot be undone.',
-                  )
-                ) {
-                  clearAllAdmin()
-                  flash('All notifications cleared.')
-                }
-              }}
+              onClick={() => setConfirmClear(true)}
               className="btn-secondary"
             >
               <Trash2 className="h-4 w-4" /> Clear all
@@ -298,7 +288,7 @@ export default function NotificationsPage() {
       </div>
 
       <div className="card mb-4 p-4 sm:p-3">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="scroll-soft -mx-1 flex flex-wrap items-center gap-2 overflow-x-auto px-1">
           <div className="relative min-w-[200px] flex-1 sm:max-w-[300px]">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-400" />
             <input
@@ -355,7 +345,7 @@ export default function NotificationsPage() {
               navigate(n.href)
             }
           }}
-          onDelete={(n) => deleteNotification(n.id)}
+          onDelete={(n) => setPendingDelete(n)}
         />
       )}
 
@@ -363,14 +353,49 @@ export default function NotificationsPage() {
         <ActivityList items={filteredActivity} />
       )}
 
-      {toast && (
-        <div className="pointer-events-none fixed bottom-4 left-1/2 z-[60] -translate-x-1/2">
-          <div className="inline-flex items-center gap-2 rounded-pill bg-ink-900 px-4 py-2 text-sm font-semibold text-white shadow-pop">
-            <CheckCircle2 className="h-4 w-4 text-brand-400" />
-            {toast}
-          </div>
-        </div>
-      )}
+      <ToastViewport toasts={toast.toasts} onDismiss={toast.dismiss} />
+
+      <ConfirmDialog
+        open={confirmMarkAll}
+        title="Mark all notifications as read?"
+        description={`This clears the unread state on ${summary.unread} notification${summary.unread === 1 ? '' : 's'}. You can still see them in the activity log.`}
+        confirmLabel="Mark all read"
+        tone="info"
+        onConfirm={() => {
+          markAllAdminRead()
+          flash('All notifications marked read.')
+          setConfirmMarkAll(false)
+        }}
+        onClose={() => setConfirmMarkAll(false)}
+      />
+      <ConfirmDialog
+        open={confirmClear}
+        title="Clear all admin notifications?"
+        description={`This permanently deletes ${notifList.length} notification${notifList.length === 1 ? '' : 's'}. This cannot be undone.`}
+        confirmLabel="Clear all"
+        tone="danger"
+        onConfirm={() => {
+          clearAllAdmin()
+          flash('All notifications cleared.')
+          setConfirmClear(false)
+        }}
+        onClose={() => setConfirmClear(false)}
+      />
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete this notification?"
+        description={pendingDelete?.title}
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={() => {
+          if (pendingDelete) {
+            deleteNotification(pendingDelete.id)
+            toast.success('Notification deleted.')
+          }
+          setPendingDelete(null)
+        }}
+        onClose={() => setPendingDelete(null)}
+      />
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import {
   ArrowLeft,
   Clock as ClockIcon,
@@ -16,7 +16,10 @@ import {
   Wallet,
 } from 'lucide-react'
 import { PageHeader, StatCard, EmptyState } from '../../components/Primitives'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { ProfileUrlBlock } from '../../components/ProfileUrlBlock'
 import { Tooltip } from '../../components/Tooltip'
+import { ToastViewport, useToast } from '../../components/Toast'
 import {
   getCurrentOperator,
   getOperator,
@@ -36,9 +39,9 @@ import type { OperatorActivity, OperatorActivityType } from '../../types'
 
 export default function OperatorDetailsPage() {
   const { operatorId } = useParams()
-  const navigate = useNavigate()
   const [tick, setTick] = useState(0)
-  const [toast, setToast] = useState<string | null>(null)
+  const toast = useToast()
+  const [suspendOpen, setSuspendOpen] = useState(false)
 
   useEffect(() => {
     function onFocus() {
@@ -62,9 +65,8 @@ export default function OperatorDetailsPage() {
   const me = getCurrentOperator()
   const canManage = operatorHas(me, 'staff.manage')
 
-  function flash(msg: string) {
-    setToast(msg)
-    setTimeout(() => setToast(null), 2200)
+  function flash(msg: string, tone: 'success' | 'info' | 'warning' = 'success') {
+    toast.push({ tone, title: msg })
     setTick((t) => t + 1)
   }
 
@@ -122,11 +124,7 @@ export default function OperatorDetailsPage() {
             {canManage && op.status === 'active' && (
               <button
                 type="button"
-                onClick={() => {
-                  setOperatorStatus(op.id, 'suspended')
-                  flash(`${op.name} suspended.`)
-                  playCue('warning')
-                }}
+                onClick={() => setSuspendOpen(true)}
                 className="btn-secondary"
               >
                 <Pause className="h-4 w-4" /> Suspend
@@ -137,7 +135,7 @@ export default function OperatorDetailsPage() {
                 type="button"
                 onClick={() => {
                   setOperatorStatus(op.id, 'active')
-                  flash(`${op.name} reactivated.`)
+                  flash(`${op.name} reactivated.`, 'success')
                   playCue('success')
                 }}
                 className="btn-primary"
@@ -202,6 +200,15 @@ export default function OperatorDetailsPage() {
                   value={op.lastActiveAt ? relTime(op.lastActiveAt) : '—'}
                 />
               </dl>
+
+              <div className="mt-4">
+                <ProfileUrlBlock
+                  slug={op.id}
+                  routePrefix="/app/staff/"
+                  label="Operator profile URL"
+                  hint="Share with admins who need to view this staff member."
+                />
+              </div>
             </div>
           </div>
 
@@ -359,17 +366,22 @@ export default function OperatorDetailsPage() {
         </div>
       </div>
 
-      {toast && (
-        <div className="pointer-events-none fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
-          <div className="inline-flex items-center gap-2 rounded-full bg-ink-900 px-4 py-2 text-sm font-semibold text-white shadow-pop">
-            <UserCheck className="h-4 w-4 text-brand-400" />
-            {toast}
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={suspendOpen}
+        title={`Suspend ${op.name}?`}
+        description="They won\u2019t be able to sign in until you reactivate them. Past activity is preserved."
+        confirmLabel="Suspend"
+        tone="danger"
+        onConfirm={() => {
+          setOperatorStatus(op.id, 'suspended')
+          flash(`${op.name} suspended.`, 'warning')
+          playCue('warning')
+          setSuspendOpen(false)
+        }}
+        onClose={() => setSuspendOpen(false)}
+      />
 
-      {/* unused navigation ref to satisfy bundlers */}
-      {false && <button onClick={() => navigate('/app/staff')} />}
+      <ToastViewport toasts={toast.toasts} onDismiss={toast.dismiss} />
     </div>
   )
 }

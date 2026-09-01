@@ -25,6 +25,9 @@ import {
   X,
 } from 'lucide-react'
 import { PageHeader, StatCard } from '../../components/Primitives'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { ProfileUrlBlock } from '../../components/ProfileUrlBlock'
+import { ToastViewport, useToast } from '../../components/Toast'
 import {
   assignCardToMember,
   cardStatusLabel,
@@ -182,17 +185,12 @@ export default function UserDetailsPage() {
   const [tab, setTab] = useState<Tab>('overview')
   const [assignOpen, setAssignOpen] = useState(false)
   const [removeCardId, setRemoveCardId] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
+  const toast = useToast()
+  const [statusConfirm, setStatusConfirm] = useState<Member['status'] | null>(null)
 
   useEffect(() => {
     refresh()
   }, [memberId])
-
-  useEffect(() => {
-    if (!toast) return
-    const t = setTimeout(() => setToast(null), 2200)
-    return () => clearTimeout(t)
-  }, [toast])
 
   function refresh() {
     if (!memberId) return
@@ -235,8 +233,8 @@ export default function UserDetailsPage() {
     return { totalBalance, totalDeposits, totalSpent, orderCount }
   }, [cards, deposits, transactions])
 
-  function notify(msg: string) {
-    setToast(msg)
+  function notify(msg: string, tone: 'success' | 'info' | 'warning' = 'success') {
+    toast.push({ tone, title: msg })
   }
 
   function handleAssign(cardId: string) {
@@ -244,7 +242,7 @@ export default function UserDetailsPage() {
     const res = assignCardToMember(cardId, member.id)
     if (res) {
       refresh()
-      notify(`Card ${maskCardNumber(res.cardNumber)} assigned.`)
+      notify(`Card ${maskCardNumber(res.cardNumber)} assigned.`, 'success')
       playCue('success')
     }
     setAssignOpen(false)
@@ -255,7 +253,7 @@ export default function UserDetailsPage() {
     if (!card) return
     unassignCard(cardId)
     refresh()
-    notify(`Card ${maskCardNumber(card.cardNumber)} unassigned.`)
+    notify(`Card ${maskCardNumber(card.cardNumber)} unassigned.`, 'info')
     playCue('info')
     setRemoveCardId(null)
   }
@@ -264,8 +262,10 @@ export default function UserDetailsPage() {
     if (!member) return
     setMemberStatus(member.id, status)
     refresh()
-    notify(`${member.name} ${status}.`)
-    playCue(status === 'suspended' ? 'warning' : status === 'active' ? 'success' : 'info')
+    const tone =
+      status === 'suspended' ? 'warning' : status === 'active' ? 'success' : 'info'
+    notify(`${member.name} ${status}.`, tone)
+    playCue(tone === 'warning' ? 'warning' : tone === 'info' ? 'info' : 'success')
   }
 
   if (!member) {
@@ -307,7 +307,7 @@ export default function UserDetailsPage() {
               <ArrowLeft className="h-4 w-4" /> Back
             </Link>
             {member.status === 'active' && (
-              <button onClick={() => handleStatus('inactive')} className="btn-secondary">
+              <button onClick={() => setStatusConfirm('inactive')} className="btn-secondary">
                 <Pause className="h-4 w-4" /> Deactivate
               </button>
             )}
@@ -317,7 +317,7 @@ export default function UserDetailsPage() {
               </button>
             )}
             {member.status !== 'suspended' && (
-              <button onClick={() => handleStatus('suspended')} className="btn-secondary">
+              <button onClick={() => setStatusConfirm('suspended')} className="btn-secondary">
                 <ShieldOff className="h-4 w-4" /> Suspend
               </button>
             )}
@@ -414,11 +414,28 @@ export default function UserDetailsPage() {
         />
       )}
 
-      {toast && (
-        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-pill bg-ink-900 px-4 py-2 text-sm font-semibold text-white shadow-pop">
-          {toast}
-        </div>
-      )}
+      <ToastViewport toasts={toast.toasts} onDismiss={toast.dismiss} />
+
+      <ConfirmDialog
+        open={statusConfirm !== null}
+        title={
+          statusConfirm === 'suspended'
+            ? `Suspend ${member.name}?`
+            : `Deactivate ${member.name}?`
+        }
+        description={
+          statusConfirm === 'suspended'
+            ? 'They won\u2019t be able to sign in or make purchases until you reactivate them.'
+            : 'Their account will be paused. You can reactivate it any time.'
+        }
+        confirmLabel={statusConfirm === 'suspended' ? 'Suspend' : 'Deactivate'}
+        tone={statusConfirm === 'suspended' ? 'danger' : 'warning'}
+        onConfirm={() => {
+          if (statusConfirm) handleStatus(statusConfirm)
+          setStatusConfirm(null)
+        }}
+        onClose={() => setStatusConfirm(null)}
+      />
     </div>
   )
 }
@@ -488,6 +505,12 @@ function ProfileSidebar({
           <StatCard variant="inline" label="Cards" value={String(cardCount)} />
         </div>
       </div>
+
+      <ProfileUrlBlock
+        slug={member.slug ?? member.id}
+        label="Member portal"
+        hint="Share this link so the member can sign in with their card or password."
+      />
     </div>
   )
 }
@@ -536,7 +559,7 @@ function OverviewTab({
           title="Cards"
           cta={
             <Link
-              to={`/app/users`}
+              to={`/app/cards`}
               className="text-xs font-semibold text-ink-700 hover:underline"
             >
               Manage
@@ -567,9 +590,12 @@ function OverviewTab({
         <SummaryCard
           title="Recent activity"
           cta={
-            <button className="text-xs font-semibold text-ink-700 hover:underline">
+            <Link
+              to={`/app/orders`}
+              className="text-xs font-semibold text-ink-700 hover:underline"
+            >
               See all
-            </button>
+            </Link>
           }
         >
           {activity.length === 0 ? (
@@ -595,7 +621,7 @@ function OverviewTab({
           title="Recent transactions"
           cta={
             <Link
-              to={`/app/users`}
+              to={`/app/transactions`}
               className="text-xs font-semibold text-ink-700 hover:underline"
             >
               See all
@@ -807,30 +833,32 @@ function BalanceTab({
         {cards.length === 0 ? (
           <div className="text-sm text-ink-500">No cards assigned.</div>
         ) : (
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-ink-100 text-[11px] uppercase tracking-wide text-ink-500">
-                <th className="py-2 font-semibold">Card</th>
-                <th className="py-2 font-semibold">Type</th>
-                <th className="py-2 font-semibold">Status</th>
-                <th className="py-2 text-right font-semibold">Balance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cards.map((c) => (
-                <tr key={c.id} className="border-b border-ink-100 last:border-0">
-                  <td className="py-2 font-mono text-xs">{c.cardNumber}</td>
-                  <td className="py-2 text-xs">{cardTypeLabel(c.type)}</td>
-                  <td className="py-2">
-                    <CardStatusPill status={c.status} />
-                  </td>
-                  <td className="py-2 text-right font-bold text-ink-900">
-                    {currency(c.balance)}
-                  </td>
+          <div className="scroll-soft overflow-x-auto">
+            <table className="w-full min-w-[480px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-ink-100 text-[11px] uppercase tracking-wide text-ink-500">
+                  <th className="py-2 font-semibold">Card</th>
+                  <th className="py-2 font-semibold">Type</th>
+                  <th className="py-2 font-semibold">Status</th>
+                  <th className="py-2 text-right font-semibold">Balance</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {cards.map((c) => (
+                  <tr key={c.id} className="border-b border-ink-100 last:border-0">
+                    <td className="py-2 font-mono text-xs">{c.cardNumber}</td>
+                    <td className="py-2 text-xs">{cardTypeLabel(c.type)}</td>
+                    <td className="py-2">
+                      <CardStatusPill status={c.status} />
+                    </td>
+                    <td className="py-2 text-right font-bold text-ink-900">
+                      {currency(c.balance)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
@@ -848,38 +876,40 @@ function DepositsTab({
     return <EmptyState message="No deposits recorded yet for this account." />
   }
   return (
-    <div className="overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-soft">
-      <table className="w-full text-left text-sm">
-        <thead>
-          <tr className="border-b border-ink-100 text-[11px] uppercase tracking-wide text-ink-500">
-            <th className="px-4 py-3 font-semibold">Date</th>
-            <th className="px-4 py-3 font-semibold">Card</th>
-            <th className="px-4 py-3 font-semibold">Method</th>
-            <th className="px-4 py-3 font-semibold">Reference</th>
-            <th className="px-4 py-3 text-right font-semibold">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {deposits.map((d) => {
-            const card = cards.find((c) => c.id === d.cardId)
-            return (
-              <tr key={d.id} className="border-b border-ink-100 last:border-0 hover:bg-ink-50/60">
-                <td className="px-4 py-3 text-xs text-ink-700">{formatDateTime(d.at)}</td>
-                <td className="px-4 py-3 font-mono text-xs">
-                  {card ? maskCardNumber(card.cardNumber) : '—'}
-                </td>
-                <td className="px-4 py-3 text-xs">{paymentMethodLabel(d.method as never)}</td>
-                <td className="px-4 py-3 font-mono text-[11px] text-ink-500">
-                  {d.reference ?? '—'}
-                </td>
-                <td className="px-4 py-3 text-right font-bold text-ink-900">
-                  {currency(d.amount)}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+    <div className="scroll-soft overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-soft">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[560px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-ink-100 text-[11px] uppercase tracking-wide text-ink-500">
+              <th className="px-4 py-3 font-semibold">Date</th>
+              <th className="px-4 py-3 font-semibold">Card</th>
+              <th className="px-4 py-3 font-semibold">Method</th>
+              <th className="px-4 py-3 font-semibold">Reference</th>
+              <th className="px-4 py-3 text-right font-semibold">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {deposits.map((d) => {
+              const card = cards.find((c) => c.id === d.cardId)
+              return (
+                <tr key={d.id} className="border-b border-ink-100 last:border-0 hover:bg-ink-50/60">
+                  <td className="px-4 py-3 text-xs text-ink-700">{formatDateTime(d.at)}</td>
+                  <td className="px-4 py-3 font-mono text-xs">
+                    {card ? maskCardNumber(card.cardNumber) : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-xs">{paymentMethodLabel(d.method as never)}</td>
+                  <td className="px-4 py-3 font-mono text-[11px] text-ink-500">
+                    {d.reference ?? '—'}
+                  </td>
+                  <td className="px-4 py-3 text-right font-bold text-ink-900">
+                    {currency(d.amount)}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
@@ -1183,7 +1213,7 @@ function AssignCardDrawer({
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-ink-900/50" onClick={onClose} />
-      <div className="absolute inset-y-0 right-0 flex w-full max-w-md animate-[slideIn_0.25s_ease-out] flex-col overflow-hidden bg-white shadow-pop">
+      <div className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] animate-[slideUp_0.25s_ease-out] flex-col overflow-hidden rounded-t-3xl bg-white shadow-pop md:inset-y-0 md:right-0 md:left-auto md:max-h-full md:w-full md:max-w-md md:animate-[slideIn_0.25s_ease-out] md:rounded-none">
         <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4">
           <div>
             <div className="text-base font-bold text-ink-900">Assign a card</div>
@@ -1274,7 +1304,6 @@ function AssignCardDrawer({
           </div>
         </div>
       </div>
-      <style>{`@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
     </div>
   )
 }
@@ -1291,7 +1320,7 @@ function ConfirmRemoveCardDrawer({
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-ink-900/50" onClick={onClose} />
-      <div className="absolute inset-y-0 right-0 flex w-full max-w-md animate-[slideIn_0.25s_ease-out] flex-col overflow-hidden bg-white shadow-pop">
+      <div className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] animate-[slideUp_0.25s_ease-out] flex-col overflow-hidden rounded-t-3xl bg-white shadow-pop md:inset-y-0 md:right-0 md:left-auto md:max-h-full md:w-full md:max-w-md md:animate-[slideIn_0.25s_ease-out] md:rounded-none">
         <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4">
           <div>
             <div className="text-base font-bold text-ink-900">Unassign card</div>
@@ -1327,7 +1356,6 @@ function ConfirmRemoveCardDrawer({
           </div>
         </div>
       </div>
-      <style>{`@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
     </div>
   )
 }

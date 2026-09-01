@@ -23,8 +23,8 @@ export default function DepositsPage() {
       />
 
       <div className="card p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="scroll-soft overflow-x-auto">
+          <table className="w-full min-w-[480px] text-sm">
             <thead className="text-left text-xs uppercase tracking-wide text-ink-400">
               <tr>
                 <th className="px-5 py-3 font-semibold">Member</th>

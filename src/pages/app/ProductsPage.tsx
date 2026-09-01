@@ -28,6 +28,9 @@ import {
   X,
 } from 'lucide-react'
 import { PageHeader, StatCard } from '../../components/Primitives'
+import { ResponsiveTable, Field, FieldRow } from '../../components/ResponsiveTable'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { ToastViewport, useToast } from '../../components/Toast'
 import {
   archiveProduct,
   createProduct,
@@ -269,7 +272,8 @@ export default function ProductsPage() {
   const [editor, setEditor] = useState<EditorState>({ open: false, mode: 'create' })
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<POSProduct | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
+  const [archiveConfirm, setArchiveConfirm] = useState<POSProduct | null>(null)
+  const toast = useToast()
   const [categoriesTick, setCategoriesTick] = useState(0)
 
   function refresh() {
@@ -291,12 +295,6 @@ export default function ProductsPage() {
       window.removeEventListener(CATEGORIES_UPDATED_EVENT, onCategories)
     }
   }, [])
-
-  useEffect(() => {
-    if (!toast) return
-    const t = setTimeout(() => setToast(null), 1800)
-    return () => clearTimeout(t)
-  }, [toast])
 
   const categories = useMemo(() => {
     // Source of truth: the categories store (admin-managed, ordered, scoped
@@ -417,7 +415,7 @@ export default function ProductsPage() {
         sku: form.sku.trim() || undefined,
         category: form.category.trim() || 'Uncategorized',
       })
-      setToast(`Created "${created.name}"`)
+      toast.success(`Created "${created.name}"`)
       playCue('success')
     } else if (editor.id) {
       const updated = updateProduct(editor.id, {
@@ -425,7 +423,7 @@ export default function ProductsPage() {
         sku: form.sku.trim() || undefined,
         category: form.category.trim() || 'Uncategorized',
       })
-      setToast(`Saved "${updated?.name ?? 'product'}"`)
+      toast.success(`Saved "${updated?.name ?? 'product'}"`)
       playCue('success')
     }
     refresh()
@@ -436,7 +434,7 @@ export default function ProductsPage() {
     const copy = duplicateProduct(p.id)
     setOpenMenu(null)
     if (copy) {
-      setToast(`Duplicated as "${copy.name}"`)
+      toast.success(`Duplicated as "${copy.name}"`)
       playCue('tap')
     }
     refresh()
@@ -446,16 +444,22 @@ export default function ProductsPage() {
     const next: ProductStatus = p.status === 'active' ? 'inactive' : 'active'
     setProductStatus(p.id, next)
     setOpenMenu(null)
-    setToast(next === 'active' ? `Activated "${p.name}"` : `Deactivated "${p.name}"`)
+    toast.info(next === 'active' ? `Activated "${p.name}"` : `Deactivated "${p.name}"`)
     playCue('tap')
     refresh()
   }
 
   function handleArchive(p: POSProduct) {
-    archiveProduct(p.id)
+    setArchiveConfirm(p)
     setOpenMenu(null)
-    setToast(`Archived "${p.name}"`)
+  }
+
+  function commitArchive() {
+    if (!archiveConfirm) return
+    archiveProduct(archiveConfirm.id)
+    toast.info(`Archived "${archiveConfirm.name}"`)
     playCue('tap')
+    setArchiveConfirm(null)
     refresh()
   }
 
@@ -467,7 +471,7 @@ export default function ProductsPage() {
   function confirmDeleteNow() {
     if (!confirmDelete) return
     deleteProduct(confirmDelete.id)
-    setToast(`Deleted "${confirmDelete.name}"`)
+    toast.warning(`Deleted "${confirmDelete.name}"`)
     playCue('warning')
     setConfirmDelete(null)
     refresh()
@@ -730,20 +734,31 @@ export default function ProductsPage() {
       )}
 
       {confirmDelete && (
-        <ConfirmModal
+        <ConfirmDialog
+          open={confirmDelete !== null}
           title={`Delete "${confirmDelete.name}"?`}
           description="This removes the product from your catalog. Past transactions will still reference the product name."
           confirmLabel="Delete product"
+          tone="danger"
           onConfirm={confirmDeleteNow}
-          onCancel={() => setConfirmDelete(null)}
+          onClose={() => setConfirmDelete(null)}
         />
       )}
 
-      {toast && (
-        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-pill bg-ink-900 px-4 py-2 text-sm font-semibold text-white shadow-pop">
-          {toast}
-        </div>
+      {archiveConfirm && (
+        <ConfirmDialog
+          open={archiveConfirm !== null}
+          title={`Archive "${archiveConfirm.name}"?`}
+          description="Archived products are hidden from the POS menu but stay in your catalog. You can restore them later."
+          impact={`Status will change to “archived”. Past sales are kept.`}
+          confirmLabel="Archive product"
+          tone="warning"
+          onConfirm={commitArchive}
+          onClose={() => setArchiveConfirm(null)}
+        />
       )}
+
+      <ToastViewport toasts={toast.toasts} onDismiss={toast.dismiss} />
     </div>
   )
 }
@@ -778,136 +793,234 @@ function ProductsTable({
   onDelete: (p: POSProduct) => void
 }) {
   return (
-    <div className="mt-4 overflow-x-auto rounded-2xl border border-ink-100">
-      <table className="w-full text-sm">
-        <thead className="bg-ink-50/50 text-left text-[11px] uppercase tracking-wide text-ink-500">
-          <tr>
-            <th className="px-4 py-2.5 font-semibold">Product</th>
-            <SortableTh label="SKU" id="name" current={sortKey} dir={sortDir} onSort={onSort} />
-            <SortableTh label="Category" id="category" current={sortKey} dir={sortDir} onSort={onSort} />
-            <SortableTh label="Price" id="price" current={sortKey} dir={sortDir} onSort={onSort} align="right" />
-            <th className="px-3 py-2.5 text-right font-semibold">Cost</th>
-            <SortableTh label="Stock" id="stock" current={sortKey} dir={sortDir} onSort={onSort} />
-            <th className="px-3 py-2.5 font-semibold">Status</th>
-            <th className="px-3 py-2.5 font-semibold">Discount</th>
-            <SortableTh label="Updated" id="updated" current={sortKey} dir={sortDir} onSort={onSort} />
-            <th className="w-10 px-3 py-2.5" />
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-ink-100">
-          {products.map((p) => {
-            const stock = stockState(p)
-            const finalPrice = p.discount
-              ? p.discount.kind === 'percent'
-                ? p.price * (1 - p.discount.value / 100)
-                : Math.max(0, p.price - p.discount.value)
-              : p.price
-            return (
-              <tr key={p.id} className="hover:bg-ink-50/60">
-                <td className="px-4 py-2.5">
-                  <div className="flex items-center gap-3">
-                    <div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-ink-50 text-ink-300">
-                      {p.image ? (
-                        <img src={p.image} alt={p.name} className="h-full w-full object-cover" />
-                      ) : (
-                        <ImageIcon className="h-4 w-4" />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate text-sm font-bold text-ink-900">{p.name}</span>
-                        {p.featured && <Star className="h-3 w-3 fill-amber-400 text-amber-500" />}
-                      </div>
-                      <div className="truncate text-[11px] text-ink-500">
-                        {p.description || 'No description'}
-                        {p.variants.length > 0 && (
-                          <span className="ml-1 text-ink-400">
-                            · {p.variants.length} variant{p.variants.length === 1 ? '' : 's'}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 font-mono text-[11px] text-ink-700">{p.sku}</td>
-                <td className="px-3 py-2.5 text-ink-700">
-                  <span className="rounded-pill bg-ink-100 px-2 py-0.5 text-[11px] font-semibold text-ink-700">
-                    {p.category}
-                  </span>
-                </td>
-                <td className="px-3 py-2.5 text-right font-extrabold text-ink-900">
-                  {p.discount ? (
-                    <div className="flex flex-col items-end">
-                      <span>{currency(finalPrice)}</span>
-                      <span className="text-[10px] font-medium text-ink-400 line-through">
-                        {currency(p.price)}
-                      </span>
-                    </div>
+    <ResponsiveTable
+      className="mt-4"
+      columns={[
+        { label: 'Product' },
+        { label: 'SKU' },
+        { label: 'Category' },
+        { label: 'Price', className: 'text-right' },
+        { label: 'Cost', className: 'text-right' },
+        { label: 'Stock' },
+        { label: 'Status' },
+        { label: 'Discount' },
+        { label: 'Updated' },
+        { label: '', className: 'w-10' },
+      ]}
+      rows={products}
+      rowKey={(p) => p.id}
+      mode="scroll"
+      minWidth="820px"
+      tableClassName="w-full text-sm"
+      renderRow={(p) => {
+        const stock = stockState(p)
+        const finalPrice = p.discount
+          ? p.discount.kind === 'percent'
+            ? p.price * (1 - p.discount.value / 100)
+            : Math.max(0, p.price - p.discount.value)
+          : p.price
+        return (
+          <>
+            <td className="px-4 py-2.5">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-ink-50 text-ink-300">
+                  {p.image ? (
+                    <img src={p.image} alt={p.name} className="h-full w-full object-cover" />
                   ) : (
-                    currency(p.price)
+                    <ImageIcon className="h-4 w-4" />
                   )}
-                </td>
-                <td className="px-3 py-2.5 text-right text-ink-600">
-                  {p.cost !== undefined ? currency(p.cost) : '—'}
-                </td>
-                <td className="px-3 py-2.5">
-                  <span
-                    className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] font-semibold ${stock.tone}`}
-                  >
-                    {stock.label}
-                  </span>
-                </td>
-                <td className="px-3 py-2.5">
-                  <div className="flex flex-col items-start gap-1">
-                    <span
-                      className={`inline-flex items-center gap-1.5 rounded-pill border px-2 py-0.5 text-[11px] font-semibold ${statusPillClass(
-                        p.status,
-                      )}`}
-                    >
-                      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                      {p.status[0].toUpperCase() + p.status.slice(1)}
-                    </span>
-                    {p.available ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-ink-500">
-                        <Eye className="h-3 w-3" /> In POS
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-ink-400">
-                        <EyeOff className="h-3 w-3" /> Hidden
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate text-sm font-bold text-ink-900">{p.name}</span>
+                    {p.featured && <Star className="h-3 w-3 fill-amber-400 text-amber-500" />}
+                  </div>
+                  <div className="truncate text-[11px] text-ink-500">
+                    {p.description || 'No description'}
+                    {p.variants.length > 0 && (
+                      <span className="ml-1 text-ink-400">
+                        · {p.variants.length} variant{p.variants.length === 1 ? '' : 's'}
                       </span>
                     )}
                   </div>
-                </td>
-                <td className="px-3 py-2.5 text-ink-700">
-                  {p.discount ? (
-                    <span className="inline-flex items-center gap-1 rounded-pill bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
-                      <TrendingUp className="h-3 w-3" />
-                      {p.discount.kind === 'percent' ? `${p.discount.value}%` : currency(p.discount.value)}
-                      {p.discount.label ? ` · ${p.discount.label}` : ''}
-                    </span>
-                  ) : (
-                    <span className="text-ink-400">—</span>
-                  )}
-                </td>
-                <td className="px-3 py-2.5 text-[11px] text-ink-500">{formatRelative(p.updatedAt)}</td>
-                <td className="px-3 py-2.5">
-                  <RowMenu
-                    product={p}
-                    open={openMenu === p.id}
-                    setOpen={(o) => setOpenMenu(o ? p.id : null)}
-                    onEdit={onEdit}
-                    onDuplicate={onDuplicate}
-                    onToggleActive={onToggleActive}
-                    onArchive={onArchive}
-                    onDelete={onDelete}
-                  />
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
+                </div>
+              </div>
+            </td>
+            <td className="px-3 py-2.5 font-mono text-[11px] text-ink-700">{p.sku}</td>
+            <td className="px-3 py-2.5 text-ink-700">
+              <span className="rounded-pill bg-ink-100 px-2 py-0.5 text-[11px] font-semibold text-ink-700">
+                {p.category}
+              </span>
+            </td>
+            <td className="px-3 py-2.5 text-right font-extrabold text-ink-900">
+              {p.discount ? (
+                <div className="flex flex-col items-end">
+                  <span>{currency(finalPrice)}</span>
+                  <span className="text-[10px] font-medium text-ink-400 line-through">
+                    {currency(p.price)}
+                  </span>
+                </div>
+              ) : (
+                currency(p.price)
+              )}
+            </td>
+            <td className="px-3 py-2.5 text-right text-ink-600">
+              {p.cost !== undefined ? currency(p.cost) : '—'}
+            </td>
+            <td className="px-3 py-2.5">
+              <span
+                className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] font-semibold ${stock.tone}`}
+              >
+                {stock.label}
+              </span>
+            </td>
+            <td className="px-3 py-2.5">
+              <div className="flex flex-col items-start gap-1">
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-pill border px-2 py-0.5 text-[11px] font-semibold ${statusPillClass(
+                    p.status,
+                  )}`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                  {p.status[0].toUpperCase() + p.status.slice(1)}
+                </span>
+                {p.available ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] text-ink-500">
+                    <Eye className="h-3 w-3" /> In POS
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[10px] text-ink-400">
+                    <EyeOff className="h-3 w-3" /> Hidden
+                  </span>
+                )}
+              </div>
+            </td>
+            <td className="px-3 py-2.5 text-ink-700">
+              {p.discount ? (
+                <span className="inline-flex items-center gap-1 rounded-pill bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                  <TrendingUp className="h-3 w-3" />
+                  {p.discount.kind === 'percent' ? `${p.discount.value}%` : currency(p.discount.value)}
+                  {p.discount.label ? ` · ${p.discount.label}` : ''}
+                </span>
+              ) : (
+                <span className="text-ink-400">—</span>
+              )}
+            </td>
+            <td className="px-3 py-2.5 text-[11px] text-ink-500">{formatRelative(p.updatedAt)}</td>
+            <td className="px-3 py-2.5">
+              <RowMenu
+                product={p}
+                open={openMenu === p.id}
+                setOpen={(o) => setOpenMenu(o ? p.id : null)}
+                onEdit={onEdit}
+                onDuplicate={onDuplicate}
+                onToggleActive={onToggleActive}
+                onArchive={onArchive}
+                onDelete={onDelete}
+              />
+            </td>
+          </>
+        )
+      }}
+      renderCard={(p) => {
+        const stock = stockState(p)
+        const finalPrice = p.discount
+          ? p.discount.kind === 'percent'
+            ? p.price * (1 - p.discount.value / 100)
+            : Math.max(0, p.price - p.discount.value)
+          : p.price
+        return (
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-ink-50 text-ink-300">
+                {p.image ? (
+                  <img src={p.image} alt={p.name} className="h-full w-full object-cover" />
+                ) : (
+                  <ImageIcon className="h-5 w-5" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-sm font-bold text-ink-900">{p.name}</span>
+                  {p.featured && <Star className="h-3 w-3 fill-amber-400 text-amber-500" />}
+                </div>
+                <div className="truncate text-[11px] text-ink-500">
+                  {p.sku} · {p.category}
+                </div>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="font-extrabold text-ink-900">
+                  {p.discount ? currency(finalPrice) : currency(p.price)}
+                </div>
+                {p.discount && (
+                  <div className="text-[10px] font-medium text-ink-400 line-through">
+                    {currency(p.price)}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              <span
+                className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] font-semibold ${stock.tone}`}
+              >
+                {stock.label}
+              </span>
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-pill border px-2 py-0.5 text-[11px] font-semibold ${statusPillClass(
+                  p.status,
+                )}`}
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                {p.status[0].toUpperCase() + p.status.slice(1)}
+              </span>
+              {p.available ? (
+                <span className="inline-flex items-center gap-1 text-[10px] text-ink-500">
+                  <Eye className="h-3 w-3" /> In POS
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[10px] text-ink-400">
+                  <EyeOff className="h-3 w-3" /> Hidden
+                </span>
+              )}
+              {p.discount && (
+                <span className="inline-flex items-center gap-1 rounded-pill bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                  <TrendingUp className="h-3 w-3" />
+                  {p.discount.kind === 'percent' ? `${p.discount.value}%` : currency(p.discount.value)}
+                </span>
+              )}
+            </div>
+            <FieldRow className="mt-3">
+              <Field label="Description">
+                <span className="text-xs text-ink-700">
+                  {p.description || 'No description'}
+                </span>
+              </Field>
+              {p.cost !== undefined && (
+                <Field label="Cost">{currency(p.cost)}</Field>
+              )}
+              {p.variants.length > 0 && (
+                <Field label="Variants">
+                  {p.variants.length} variant{p.variants.length === 1 ? '' : 's'}
+                </Field>
+              )}
+              <Field label="Updated">{formatRelative(p.updatedAt)}</Field>
+            </FieldRow>
+            <div className="mt-3 flex items-center justify-end border-t border-ink-100 pt-3">
+              <RowMenu
+                product={p}
+                open={openMenu === p.id}
+                setOpen={(o) => setOpenMenu(o ? p.id : null)}
+                onEdit={onEdit}
+                onDuplicate={onDuplicate}
+                onToggleActive={onToggleActive}
+                onArchive={onArchive}
+                onDelete={onDelete}
+              />
+            </div>
+          </div>
+        )
+      }}
+    />
   )
 }
 
@@ -1471,7 +1584,7 @@ function ProductEditorModal({
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-ink-900/50" onClick={onClose} />
-      <div className="absolute inset-y-0 right-0 flex w-full max-w-2xl animate-[slideIn_0.25s_ease-out] flex-col overflow-hidden bg-white shadow-pop">
+      <div className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] animate-[slideUp_0.25s_ease-out] flex-col overflow-hidden rounded-t-3xl bg-white shadow-pop md:inset-y-0 md:right-0 md:left-auto md:max-h-full md:w-full md:max-w-2xl md:animate-[slideIn_0.25s_ease-out] md:rounded-none">
         <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4">
           <div>
             <div className="text-base font-bold text-ink-900">
@@ -1485,7 +1598,7 @@ function ProductEditorModal({
           </div>
           <button
             onClick={onClose}
-            className="grid h-8 w-8 place-items-center rounded-full bg-ink-100 text-ink-700"
+            className="grid h-9 w-9 place-items-center rounded-full bg-ink-100 text-ink-700"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -1753,8 +1866,9 @@ function ProductEditorModal({
                         <button
                           type="button"
                           onClick={() => removeVariant(v.id)}
-                          className="grid h-10 w-10 place-items-center rounded-xl border border-ink-200 text-ink-500 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                          className="touch-target grid h-10 w-10 place-items-center rounded-xl border border-ink-200 text-ink-500 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
                           title="Remove variant"
+                          aria-label="Remove variant"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -2005,42 +2119,6 @@ function CategoryInput({
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Confirm modal
-// ---------------------------------------------------------------------------
-
-function ConfirmModal({
-  title,
-  description,
-  confirmLabel,
-  onConfirm,
-  onCancel,
-}: {
-  title: string
-  description: string
-  confirmLabel: string
-  onConfirm: () => void
-  onCancel: () => void
-}) {
-  return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-ink-900/50" onClick={onCancel} />
-      <div className="absolute left-1/2 top-1/2 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-5 shadow-pop">
-        <div className="text-base font-bold text-ink-900">{title}</div>
-        <p className="mt-1 text-sm text-ink-500">{description}</p>
-        <div className="mt-4 flex items-center gap-2">
-          <button onClick={onCancel} className="btn-secondary flex-1">
-            Cancel
-          </button>
-          <button onClick={onConfirm} className="btn-danger flex-1">
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
     </div>
   )
 }
