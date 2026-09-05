@@ -5,7 +5,6 @@ import {
   Banknote,
   BarChart3,
   Calendar,
-  ChevronDown,
   Clock,
   CreditCard,
   Download,
@@ -15,12 +14,17 @@ import {
   Package,
   ShoppingBag,
   Sparkles,
-  Store,
+  TrendingUp,
   UserPlus,
   Users,
   Wallet,
+  X,
 } from 'lucide-react'
 import { PageHeader, StatCard, ActionTile, type StatTone } from '../../components/Primitives'
+import {
+  FilterDateRange,
+  FilterSelect,
+} from '../../components/FilterBar'
 import {
   getCards,
   getCardDeposits,
@@ -31,14 +35,25 @@ import {
 } from '../../card-store'
 import { getTransactions, paymentMethodLabel } from '../../payment-store'
 import { getLocations } from '../../orders-store'
-import { getActiveLocationIdSync } from '../../active-location'
-import { getAuth, getBusiness } from '../../store'
+import { getProduct } from '../../pos-store'
+import { getAuth } from '../../store'
+import { useIsMultiLocation } from '../../hooks/useIsMultiLocation'
 import type {
   CardDeposit,
   DepositRequest,
   MembershipCard,
   Transaction,
 } from '../../types'
+import {
+  activeFilterCount,
+  applyBaseFilters,
+  EMPTY_FILTER_STATE,
+  operatorName,
+  orderItemsCount,
+  statusLabel,
+  statusPillClass,
+  type TransactionFilterState,
+} from '../../order-utils'
 import { playCue } from '../../audio'
 
 type ChartRange = 'day' | 'week' | 'month' | 'year'
@@ -94,10 +109,10 @@ function monthLabel(t: number) {
 }
 
 export default function DashboardPage() {
-  const business = getBusiness()
   const auth = getAuth()
   const firstName =
     auth?.email?.split('@')[0]?.split(/[._-]/)[0]?.replace(/^./, (c) => c.toUpperCase()) ?? 'there'
+  const multi = useIsMultiLocation()
 
   // Refresh on focus so the dashboard reflects new sales without manual reload
   const [tick, setTick] = useState(0)
@@ -109,10 +124,26 @@ export default function DashboardPage() {
     return () => window.removeEventListener('focus', onFocus)
   }, [])
 
+  const [filters, setFilters] = useState<TransactionFilterState>(EMPTY_FILTER_STATE)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const filterCount = activeFilterCount(filters)
+
+  const baseTxns = useMemo(() => getTransactions(), [tick])
+
+  // Apply the dashboard filter bar to every KPI / chart / list below.
+  // "today", "yesterday", "this week" etc. still work — the user can scope
+  // them further by location, payment method, status, or a custom range.
+  const filteredTxns = useMemo(
+    () => applyBaseFilters(baseTxns, filters),
+    [baseTxns, filters],
+  )
+
   const data = useMemo(() => {
-    const allTxns = getTransactions()
-    const completed = allTxns.filter((t) => t.status === 'completed' || t.status === 'refunded')
-    const completedOnly = allTxns.filter((t) => t.status === 'completed')
+    const completed = filteredTxns.filter(
+      (t) => t.status === 'completed' || t.status === 'refunded',
+    )
+    const completedOnly = filteredTxns.filter((t) => t.status === 'completed')
+    const validForProfit = filteredTxns.filter((t) => t.status === 'completed')
     const startToday = startOfToday()
     const dayMs = 86400000
     const startYesterday = startToday - dayMs
@@ -132,13 +163,33 @@ export default function DashboardPage() {
     const weekSales = completed
       .filter((t) => new Date(t.createdAt).getTime() >= startWeek)
       .reduce((s, t) => s + t.total, 0)
-    const prevWeekSales = completed
+    const prevWeekSales = baseTxns
+      .filter((t) => t.status === 'completed' || t.status === 'refunded')
       .filter((t) => {
         const x = new Date(t.createdAt).getTime()
         return x >= startLastWeek && x < startWeek
       })
       .reduce((s, t) => s + t.total, 0)
     const revenue = completedOnly.reduce((s, t) => s + t.total, 0)
+
+    // Profit / loss = Σ (Actual Selling Price − Product Cost) × Qty for every
+    // completed sale (refunded items contribute a negative line). Items
+    // without a cost on file are treated as 100% margin so the metric
+    // reflects actual settled sales and isn't distorted by missing data.
+    let profit = 0
+    for (const t of validForProfit) {
+      const factor = t.status === 'completed' ? 1 : -1
+      for (const item of t.items) {
+        const product = getProduct(item.productId)
+        const cost = typeof product?.cost === 'number' ? product.cost : item.price
+        const lineProfit = (item.price - cost) * item.qty
+        profit += lineProfit * factor
+      }
+    }
+    const profitItems = validForProfit.reduce(
+      (s, t) => s + t.items.reduce((q, i) => q + i.qty, 0),
+      0,
+    )
 
     const members = getMembers()
     const cards = getCards()
@@ -176,7 +227,7 @@ export default function DashboardPage() {
 
     return {
       allTxns: completedOnly,
-      allTxnsForChart: allTxns.filter((t) => t.status === 'completed'),
+      allTxnsForChart: filteredTxns.filter((t) => t.status === 'completed'),
       members,
       cards,
       requests,
@@ -186,6 +237,8 @@ export default function DashboardPage() {
       weekSales,
       prevWeekSales,
       revenue,
+      profit,
+      profitItems,
       activeUsers,
       activeCards,
       totalBalance,
@@ -196,7 +249,24 @@ export default function DashboardPage() {
       balanceChange7d,
     }
     // tick is intentionally included so this recomputes on focus refresh
-  }, [tick])
+  }, [filteredTxns, baseTxns, tick])
+
+  const filterOptions = useMemo(() => buildFilterOptions(data), [data])
+
+  function toggleFilters() {
+    setFiltersOpen((o) => !o)
+    playCue('tap')
+  }
+
+  function clearFilters() {
+    setFilters(EMPTY_FILTER_STATE)
+    playCue('tap')
+  }
+
+  function onExport() {
+    playCue('tap')
+    downloadDashboardCsv(filteredTxns, data, filters)
+  }
 
   return (
     <div>
@@ -205,12 +275,21 @@ export default function DashboardPage() {
         subtitle="Here's a quick look at how your business is doing today."
         actions={
           <>
-            <BusinessSelector />
-            <LocationContext />
-            <button onClick={() => setTick((t) => t + 1)} className="btn-secondary">
-              <Filter className="h-4 w-4" /> Today
+            <button
+              type="button"
+              onClick={toggleFilters}
+              aria-pressed={filtersOpen}
+              className={`btn-secondary ${filterCount > 0 ? 'border-brand-500 bg-brand-50 text-ink-900 hover:bg-brand-100' : ''}`}
+            >
+              <Filter className="h-4 w-4" />
+              {filterCount > 0 ? `Filter · ${filterCount}` : 'Filter'}
             </button>
-            <button className="btn-secondary">
+            <button
+              type="button"
+              onClick={onExport}
+              className="btn-secondary"
+              title={`Export ${filteredTxns.length} order${filteredTxns.length === 1 ? '' : 's'} as CSV`}
+            >
               <Download className="h-4 w-4" /> Export
             </button>
             <Link to="/app/pos" className="btn-primary">
@@ -219,6 +298,18 @@ export default function DashboardPage() {
           </>
         }
       />
+
+      {filtersOpen && (
+        <DashboardFilterBar
+          filters={filters}
+          onChange={setFilters}
+          options={filterOptions}
+          hasFilters={filterCount > 0}
+          onClear={clearFilters}
+          onClose={() => setFiltersOpen(false)}
+          showLocation={multi}
+        />
+      )}
 
       <KpiGrid data={data} />
 
@@ -239,16 +330,21 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="mt-6">
-        <LocationsBreakdown transactions={data.allTxns} />
-      </div>
+      {multi && (
+        <div className="mt-6">
+          <LocationsBreakdown transactions={data.allTxns} />
+        </div>
+      )}
 
       <div className="mt-6">
         <RecentOrders transactions={data.allTxns.slice(0, 5)} />
       </div>
 
       <div className="mt-6">
-        <RecentTransactionsTable transactions={data.allTxns} />
+        <RecentTransactionsTable
+          transactions={data.allTxns}
+          showLocation={multi}
+        />
       </div>
     </div>
   )
@@ -270,6 +366,8 @@ interface KpiData {
   weekSales: number
   prevWeekSales: number
   revenue: number
+  profit: number
+  profitItems: number
   activeUsers: number
   activeCards: number
   totalBalance: number
@@ -362,10 +460,20 @@ function KpiGrid({ data }: { data: KpiData }) {
       featured: true,
       trend: data.prevWeekSales > 0 ? revenueTrend(data.weekSales, data.prevWeekSales) : undefined,
     },
+    {
+      label: data.profit < 0 ? 'Loss' : 'Profit',
+      value: currency(Math.abs(data.profit)),
+      sub:
+        data.profitItems > 0
+          ? `across ${data.profitItems} item${data.profitItems === 1 ? '' : 's'} sold`
+          : 'No completed sales',
+      icon: TrendingUp,
+      tone: data.profit < 0 ? 'rose' : data.profit > 0 ? 'emerald' : 'neutral',
+    },
   ]
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-7">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-8">
       {kpis.map((k) => (
         <StatCard
           key={k.label}
@@ -402,69 +510,189 @@ function revenueTrend(week: number, prev: number) {
   }
 }
 
-// ---- Business selector --------------------------------------------------
+// ---- Dashboard filter bar -----------------------------------------------
 
-function BusinessSelector() {
-  const business = getBusiness()
-  const locations = getLocations()
-  const activeId = getActiveLocationIdSync()
-  const activeLocation = locations.find((l) => l.id === activeId) ?? locations[0]
-  const [open, setOpen] = useState(false)
-  const list = business ? [business] : []
-  if (list.length <= 1) {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-pill border border-ink-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-700">
-        <Store className="h-3.5 w-3.5 text-ink-500" />
-        {business?.name ?? 'Main location'}
-      </span>
-    )
+interface DashboardFilterOptions {
+  locations: { value: string; label: string }[]
+  methods: { value: string; label: string }[]
+  statuses: { value: string; label: string }[]
+}
+
+function buildFilterOptions(data: KpiData): DashboardFilterOptions {
+  const locations = getLocations().map((l) => ({ value: l.id, label: l.name }))
+  const methods: DashboardFilterOptions['methods'] = (
+    ['cash', 'card', 'bank', 'wallet', 'membership'] as const
+  ).map((m) => ({ value: m, label: paymentMethodLabel(m) }))
+  const statuses: DashboardFilterOptions['statuses'] = (
+    ['completed', 'pending', 'refunded', 'partially_refunded', 'adjusted', 'failed'] as const
+  ).map((s) => ({ value: s, label: statusLabel(s) }))
+  void data
+  return { locations, methods, statuses }
+}
+
+function DashboardFilterBar({
+  filters,
+  onChange,
+  options,
+  hasFilters,
+  onClear,
+  onClose,
+  showLocation,
+}: {
+  filters: TransactionFilterState
+  onChange: (next: TransactionFilterState) => void
+  options: DashboardFilterOptions
+  hasFilters: boolean
+  onClear: () => void
+  onClose: () => void
+  showLocation: boolean
+}) {
+  function set<K extends keyof TransactionFilterState>(
+    key: K,
+    value: TransactionFilterState[K],
+  ) {
+    onChange({ ...filters, [key]: value })
   }
   return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1.5 rounded-pill border border-ink-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-800 hover:bg-ink-50"
-      >
-        <Store className="h-3.5 w-3.5 text-ink-500" />
-        {business?.name ?? 'Select location'}
-        <ChevronDown className="h-3.5 w-3.5 text-ink-400" />
-      </button>
-      {open && (
-        <div className="absolute right-0 z-20 mt-1.5 w-56 overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-pop">
-          {list.map((b) => (
-            <button
-              key={b.id}
-              onClick={() => setOpen(false)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-ink-50"
-            >
-              <Store className="h-3.5 w-3.5 text-ink-500" />
-              <span className="truncate">{b.name}</span>
-            </button>
-          ))}
-        </div>
-      )}
+    <div className="card mb-4 p-4 sm:p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <FilterDateRange
+          from={filters.dateFrom}
+          to={filters.dateTo}
+          onChange={(next) =>
+            onChange({ ...filters, dateFrom: next.from, dateTo: next.to })
+          }
+        />
+        {showLocation && (
+          <FilterSelect
+            label="Location"
+            icon={<MapPin className="h-3.5 w-3.5" />}
+            options={options.locations}
+            selected={filters.locationIds}
+            onChange={(v) => set('locationIds', v)}
+          />
+        )}
+        <FilterSelect
+          label="Payment method"
+          icon={<CreditCard className="h-3.5 w-3.5" />}
+          options={options.methods}
+          selected={filters.methods}
+          onChange={(v) => set('methods', v)}
+        />
+        <FilterSelect
+          label="Status"
+          icon={<Filter className="h-3.5 w-3.5" />}
+          options={options.statuses}
+          selected={filters.statuses}
+          onChange={(v) => set('statuses', v)}
+        />
+        {hasFilters && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-ink-200 bg-white px-3 text-xs font-semibold text-ink-700 hover:bg-ink-50"
+          >
+            <X className="h-3 w-3" /> Clear
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onClose}
+          className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-full border border-ink-200 bg-white px-3 text-xs font-semibold text-ink-700 hover:bg-ink-50"
+        >
+          <X className="h-3 w-3" /> Close
+        </button>
+      </div>
     </div>
   )
 }
 
-function LocationContext() {
+// ---- CSV export ---------------------------------------------------------
+
+function downloadDashboardCsv(
+  txns: Transaction[],
+  data: KpiData,
+  filters: TransactionFilterState,
+) {
+  const members = data.members
+  const cards = data.cards
   const locations = getLocations()
-  const activeId = getActiveLocationIdSync()
-  const activeLocation = locations.find((l) => l.id === activeId)
-  if (!activeLocation) return null
-  return (
-    <Link
-      to="/app/locations"
-      className="inline-flex items-center gap-1.5 rounded-pill border border-ink-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 hover:bg-ink-50"
-      title="Active location · click to manage"
-    >
-      <MapPin className="h-3.5 w-3.5 text-ink-500" />
-      <span className="truncate max-w-[160px]">{activeLocation.name}</span>
-      <span className="rounded bg-ink-100 px-1.5 py-0.5 font-mono text-[10px] text-ink-700">
-        {activeLocation.code}
-      </span>
-    </Link>
-  )
+
+  // Header section summarises the dashboard KPIs / profit so the CSV is
+  // useful as a one-shot report export for the current filter scope.
+  const summary: string[] = [
+    'EzSale Dashboard Export',
+    `Generated,${new Date().toISOString()}`,
+    `Filters,${describeFilters(filters)}`,
+    `Today sales,${data.todaySales.toFixed(2)}`,
+    `Week sales,${data.weekSales.toFixed(2)}`,
+    `Revenue,${data.revenue.toFixed(2)}`,
+    `Total orders,${data.totalOrders}`,
+    `${data.profit < 0 ? 'Loss' : 'Profit'},${data.profit.toFixed(2)}`,
+    '',
+  ]
+
+  const headers = [
+    'Order ID',
+    'Created',
+    'Customer',
+    'Operator',
+    'Location',
+    'Items',
+    'Subtotal',
+    'Discount',
+    'Tax',
+    'Total',
+    'Payment Method',
+    'Status',
+  ]
+  const lines: string[] = [headers.join(',')]
+  txns.forEach((t) => {
+    const member = members.find((m) => m.id === t.memberId)
+    const location = locations.find((l) => l.id === t.locationId)
+    const row = [
+      t.id,
+      new Date(t.createdAt).toISOString(),
+      member?.name ?? 'Walk-in',
+      operatorName(t.operatorEmail),
+      location?.name ?? '—',
+      String(orderItemsCount(t)),
+      t.subtotal.toFixed(2),
+      t.discount.toFixed(2),
+      t.tax.toFixed(2),
+      t.total.toFixed(2),
+      paymentMethodLabel(t.method),
+      statusLabel(t.status),
+    ].map(csvCell)
+    lines.push(row.join(','))
+  })
+
+  const blob = new Blob([summary.join('\n') + '\n' + lines.join('\n')], {
+    type: 'text/csv;charset=utf-8',
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `ezsale-dashboard-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function describeFilters(f: TransactionFilterState): string {
+  const parts: string[] = []
+  if (f.dateFrom || f.dateTo) parts.push(`dates ${f.dateFrom || '…'} → ${f.dateTo || '…'}`)
+  if (f.locationIds.length) parts.push(`locations (${f.locationIds.length})`)
+  if (f.methods.length) parts.push(`methods (${f.methods.length})`)
+  if (f.statuses.length) parts.push(`statuses (${f.statuses.length})`)
+  if (f.memberIds.length) parts.push(`members (${f.memberIds.length})`)
+  return parts.length ? parts.join('; ') : 'none'
+}
+
+function csvCell(v: unknown): string {
+  if (v == null) return ''
+  const s = String(v)
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
 }
 
 // ---- Sales chart --------------------------------------------------------
@@ -964,7 +1192,13 @@ function LocationsBreakdown({ transactions }: { transactions: Transaction[] }) {
 
 // ---- Recent transactions table ------------------------------------------
 
-function RecentTransactionsTable({ transactions }: { transactions: Transaction[] }) {
+function RecentTransactionsTable({
+  transactions,
+  showLocation,
+}: {
+  transactions: Transaction[]
+  showLocation: boolean
+}) {
   const locations = getLocations()
   const top = transactions.slice(0, 10)
   return (
@@ -1001,7 +1235,9 @@ function RecentTransactionsTable({ transactions }: { transactions: Transaction[]
               <tr>
                 <th className="px-5 py-3 font-semibold">Order</th>
                 <th className="px-5 py-3 font-semibold">Customer</th>
-                <th className="px-5 py-3 font-semibold">Location</th>
+                {showLocation && (
+                  <th className="px-5 py-3 font-semibold">Location</th>
+                )}
                 <th className="px-5 py-3 font-semibold">Method</th>
                 <th className="px-5 py-3 font-semibold text-right">Amount</th>
                 <th className="px-5 py-3 font-semibold">Date</th>
@@ -1033,18 +1269,20 @@ function RecentTransactionsTable({ transactions }: { transactions: Transaction[]
                         <span className="text-ink-500">Walk-in</span>
                       )}
                     </td>
-                    <td className="px-5 py-3 text-ink-700">
-                      {loc ? (
-                        <div>
-                          <div className="font-semibold text-ink-900">{loc.name}</div>
-                          <div className="font-mono text-[10px] text-ink-500">{loc.code}</div>
-                        </div>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-ink-500">
-                          <MapPin className="h-3 w-3" /> —
-                        </span>
-                      )}
-                    </td>
+                    {showLocation && (
+                      <td className="px-5 py-3 text-ink-700">
+                        {loc ? (
+                          <div>
+                            <div className="font-semibold text-ink-900">{loc.name}</div>
+                            <div className="font-mono text-[10px] text-ink-500">{loc.code}</div>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-ink-500">
+                            <MapPin className="h-3 w-3" /> —
+                          </span>
+                        )}
+                      </td>
+                    )}
                     <td className="px-5 py-3">
                       <span
                         className={

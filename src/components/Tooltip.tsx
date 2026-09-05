@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 export interface TooltipProps {
   content: ReactNode
@@ -11,7 +12,13 @@ export interface TooltipProps {
 
 /**
  * Lightweight CSS-only tooltip. Hover/focus on the wrapped element reveals
- * the `content` panel. Renders as a `<span>` so it works inside table cells.
+ * the `content` panel.
+ *
+ * Renders the tooltip into `document.body` via a portal so it can escape
+ * ancestor `overflow: hidden` containers (e.g. table cards). The panel is
+ * positioned with fixed coordinates measured from the trigger element and
+ * sits on the topmost layer (`z-[60]`) so it always paints above table
+ * rows, cards, and overflow wrappers.
  */
 export function Tooltip({
   content,
@@ -20,6 +27,7 @@ export function Tooltip({
   className = '',
 }: TooltipProps) {
   const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const ref = useRef<HTMLSpanElement | null>(null)
 
   // Close on outside click (mainly for touch devices that fire `click`)
@@ -32,10 +40,32 @@ export function Tooltip({
     return () => document.removeEventListener('mousedown', onDown)
   }, [])
 
-  const pos =
+  // Re-measure whenever the tooltip opens or the page scrolls / resizes,
+  // so the panel stays anchored to the trigger.
+  useEffect(() => {
+    if (!open) return
+    function measure() {
+      const el = ref.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const top =
+        side === 'top' ? rect.top - 6 : rect.bottom + 6
+      const left = rect.left + rect.width / 2
+      setPos({ top, left })
+    }
+    measure()
+    window.addEventListener('scroll', measure, true)
+    window.addEventListener('resize', measure)
+    return () => {
+      window.removeEventListener('scroll', measure, true)
+      window.removeEventListener('resize', measure)
+    }
+  }, [open, side])
+
+  const transform =
     side === 'top'
-      ? 'bottom-full left-1/2 -translate-x-1/2 mb-1.5'
-      : 'top-full left-1/2 -translate-x-1/2 mt-1.5'
+      ? 'translate(-50%, -100%)'
+      : 'translate(-50%, 0)'
 
   return (
     <span
@@ -47,14 +77,24 @@ export function Tooltip({
       onBlur={() => setOpen(false)}
     >
       {children}
-      {open && (
-        <span
-          role="tooltip"
-          className={`pointer-events-none absolute z-40 max-w-xs whitespace-nowrap rounded-xl border border-ink-200 bg-white px-3 py-2 text-xs font-medium text-ink-800 shadow-pop ${pos} ${className}`}
-        >
-          {content}
-        </span>
-      )}
+      {open && pos
+        ? createPortal(
+            <span
+              role="tooltip"
+              style={{
+                position: 'fixed',
+                top: pos.top,
+                left: pos.left,
+                transform,
+                zIndex: 60,
+              }}
+              className={`pointer-events-none max-w-xs whitespace-nowrap rounded-xl border border-ink-200 bg-white px-3 py-2 text-xs font-medium text-ink-800 shadow-pop ${className}`}
+            >
+              {content}
+            </span>,
+            document.body,
+          )
+        : null}
     </span>
   )
 }

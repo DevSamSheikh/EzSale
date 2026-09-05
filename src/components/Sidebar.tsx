@@ -8,6 +8,7 @@ import {
   operatorHas,
 } from '../operators-store'
 import { PERMISSION_TO_NAV } from '../permissions'
+import { useIsMultiLocation } from '../hooks/useIsMultiLocation'
 
 const SIDEBAR_FULL = 'w-64'
 const SIDEBAR_COLLAPSED = 'w-[68px]'
@@ -31,9 +32,13 @@ export function Sidebar({
   const term = memberTermPlural()
   const me = getCurrentOperator()
   const w = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_FULL
-  const links = NAV_LINKS.filter((l) => l.to !== '/app/pos').filter((l) =>
-    linkAllowed(l.to, me),
-  )
+  const multi = useIsMultiLocation()
+  const links = NAV_LINKS.filter((l) => l.to !== '/app/pos')
+    .filter((l) => linkAllowed(l.to, me))
+    // Hide the multi-location-only "Locations" entry when the business is
+    // running in single-location mode. The route is still reachable via
+    // the Settings page in case the operator needs to flip the toggle on.
+    .filter((l) => multi || l.to !== '/app/locations')
   return (
     <aside
       className={`hidden h-full shrink-0 flex-col border-r border-ink-100 bg-white transition-[width] duration-200 lg:flex ${w}`}

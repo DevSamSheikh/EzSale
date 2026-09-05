@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react'
 import { DrawerShell } from './Drawer'
+import { getProduct } from '../pos-store'
 import {
   buildOrderContext,
   formatCurrency,
@@ -49,6 +50,7 @@ import { getBusiness } from '../store'
 import {
   adjustTransaction,
   getFinancialEvents,
+  getReturns,
   refundTransaction,
   remainingRefundable,
 } from '../orders-store'
@@ -123,10 +125,20 @@ export function OrderDetailsDrawer({
               {methodLabel(txn.method)}
             </span>
             {canRefund && refundable && (
+              <Link
+                to={`/app/orders/return/${txn.id}`}
+                className="inline-flex items-center gap-1.5 rounded-pill border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Add return
+              </Link>
+            )}
+            {canRefund && refundable && (
               <button
                 type="button"
                 onClick={() => setRefundOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-pill border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                className="inline-flex items-center gap-1.5 rounded-pill border border-ink-200 bg-white px-2.5 py-1 text-xs font-semibold text-ink-700 hover:bg-ink-50"
+                title="Issue a quick full or partial refund"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 Refund
@@ -241,6 +253,7 @@ export function OrderDetailsDrawer({
                 <ul className="divide-y divide-ink-100">
                   {txn.items.map((it, idx) => {
                     const lineTotal = it.price * it.qty - (it.lineDiscount ?? 0)
+                    const product = getProduct(it.productId)
                     return (
                       <li key={idx} className="flex items-center gap-3 px-4 py-3">
                         <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-ink-50 text-ink-700">
@@ -250,6 +263,16 @@ export function OrderDetailsDrawer({
                           <div className="truncate text-sm font-semibold text-ink-900">
                             {it.name}
                           </div>
+                          {it.variantName && (
+                            <div className="mt-0.5 truncate text-[11px] font-semibold text-brand-700">
+                              {it.variantName}
+                            </div>
+                          )}
+                          {(product?.productCode || product?.sku) && (
+                            <div className="truncate font-mono text-[10px] text-ink-400">
+                              {product.productCode ? product.productCode : `SKU ${product.sku}`}
+                            </div>
+                          )}
                           <div className="text-[11px] text-ink-500">
                             {formatCurrencyPlain(it.price, currency)} each
                             {it.lineDiscount ? (
@@ -339,6 +362,10 @@ export function OrderDetailsDrawer({
               </div>
             </div>
 
+            {/* Returns / refunds — item-level detail so cashiers can see
+                exactly which lines were returned and what's left. */}
+            <ReturnsPanel txn={txn} currency={currency} />
+
             {/* Audit trail */}
             <div className="rounded-2xl border border-ink-100 bg-white shadow-soft">
               <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3">
@@ -356,7 +383,7 @@ export function OrderDetailsDrawer({
                   {events.map((e) => (
                     <li key={e.id} className="flex items-start gap-3 px-4 py-3">
                       <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-ink-50 text-ink-700">
-                        {e.type === 'refund' || e.type === 'partial_refund' ? (
+                        {e.type === 'refund' || e.type === 'partial_refund' || e.type === 'return' ? (
                           <RotateCcw className="h-4 w-4 text-rose-600" />
                         ) : e.type === 'adjustment' ? (
                           <PencilLine className="h-4 w-4 text-indigo-600" />
@@ -703,6 +730,8 @@ function eventLabel(t: string) {
       return 'Full refund'
     case 'partial_refund':
       return 'Partial refund'
+    case 'return':
+      return 'Return processed'
     case 'adjustment':
       return 'Manual adjustment'
     case 'topup':
@@ -982,6 +1011,9 @@ function buildReceiptText(t: Transaction, bizName: string, currency: string) {
     lines.push(
       `${it.name}  x${it.qty}  ${formatCurrencyPlain(it.price * it.qty, currency)}`,
     )
+    if (it.variantName) {
+      lines.push(`  Variant: ${it.variantName}`)
+    }
   })
   lines.push(dash)
   lines.push('Subtotal: ' + formatCurrencyPlain(t.subtotal, currency))
@@ -1029,3 +1061,156 @@ function downloadText(text: string) {
 // keep tree-shaking happy if we extend the right-hand column with them later.
 void Mail
 void Phone
+
+// ---- Returns panel ------------------------------------------------------
+//
+// Shows every `ReturnRecord` against the current order — original vs
+// returned qty, remaining returnable, refund amount, and card-balance
+// snapshot. This sits next to the audit trail so operators can see both
+// "what happened" (audit events) and "what was returned" (return records).
+
+function ReturnsPanel({
+  txn,
+  currency,
+}: {
+  txn: Transaction
+  currency: string
+}) {
+  const records = useMemo(() => getReturns(txn.id), [txn.id])
+
+  // Per-line roll-up: how much was returned, what's left.
+  const rollup = useMemo(() => {
+    const map = new Map<
+      string,
+      { returned: number; amount: number; lastRecordId: string | null }
+    >()
+    records.forEach((r) => {
+      r.lines.forEach((l) => {
+        const key = `${l.productId}::${l.variantId ?? ''}`
+        const cur = map.get(key) ?? { returned: 0, amount: 0, lastRecordId: null }
+        cur.returned += l.qty
+        cur.amount += l.amount
+        cur.lastRecordId = r.id
+        map.set(key, cur)
+      })
+    })
+    return map
+  }, [records])
+
+  const totalReturned = records.reduce((s, r) => s + r.amount, 0)
+  const hasAny = records.length > 0
+
+  if (!hasAny) return null
+
+  return (
+    <div className="rounded-2xl border border-ink-100 bg-white shadow-soft">
+      <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <RotateCcw className="h-4 w-4 text-rose-600" />
+          <div className="text-sm font-bold text-ink-900">Returns</div>
+        </div>
+        <div className="text-right">
+          <div className="text-[11px] text-ink-500">
+            {records.length} record{records.length === 1 ? '' : 's'}
+          </div>
+          <div className="text-sm font-extrabold text-rose-700">
+            −{formatCurrency(totalReturned, currency)}
+          </div>
+        </div>
+      </div>
+      <ul className="divide-y divide-ink-100">
+        {records.map((r) => (
+          <li key={r.id} className="px-4 py-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-ink-900">
+                    {r.scope === 'full' ? 'Full return' : 'Item return'}
+                  </span>
+                  <span className="text-[10px] uppercase tracking-wider text-ink-500">
+                    {formatDateTime(r.createdAt)} · by {r.by}
+                  </span>
+                  {r.restoredToCard && (
+                    <span className="inline-flex items-center gap-1 rounded-pill border border-emerald-200 bg-emerald-50 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                      Card refunded
+                    </span>
+                  )}
+                </div>
+                {r.reason && (
+                  <div className="text-[11px] text-ink-500">Reason: {r.reason}</div>
+                )}
+                {r.restoredToCard &&
+                  typeof r.cardBalanceBefore === 'number' &&
+                  typeof r.cardBalanceAfter === 'number' && (
+                    <div className="text-[11px] text-ink-500">
+                      Card balance {formatCurrencyPlain(r.cardBalanceBefore, currency)} →{' '}
+                      {formatCurrencyPlain(r.cardBalanceAfter, currency)}
+                    </div>
+                  )}
+              </div>
+              <div className="text-right text-sm font-extrabold text-rose-700">
+                −{formatCurrency(r.amount, currency)}
+              </div>
+            </div>
+            <ul className="mt-2 space-y-0.5 rounded-xl border border-ink-100 bg-ink-50/40 p-2 text-[11px]">
+              {r.lines.map((l) => (
+                <li
+                  key={`${r.id}-${l.productId}-${l.variantId ?? ''}`}
+                  className="flex items-center justify-between gap-2"
+                >
+                  <span className="truncate text-ink-700">
+                    {l.qty} × {l.productName}
+                    {l.variantName && (
+                      <span className="ml-1 text-brand-700">· {l.variantName}</span>
+                    )}
+                  </span>
+                  <span className="font-mono text-rose-700">
+                    −{formatCurrencyPlain(l.amount, currency)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+      {/* Per-line status: how much was returned and what's left. */}
+      <div className="border-t border-ink-100 bg-ink-50/40 px-4 py-3">
+        <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-ink-500">
+          Returnable by item
+        </div>
+        <ul className="space-y-1 text-[11px]">
+          {txn.items.map((it) => {
+            const key = `${it.productId}::${it.variantId ?? ''}`
+            const r = rollup.get(key) ?? { returned: 0, amount: 0, lastRecordId: null }
+            const remaining = Math.max(0, it.qty - r.returned)
+            return (
+              <li
+                key={key}
+                className="flex items-center justify-between gap-2 rounded-lg border border-ink-100 bg-white px-2 py-1.5"
+              >
+                <span className="truncate text-ink-800">
+                  {it.name}
+                  {it.variantName && (
+                    <span className="ml-1 text-brand-700">· {it.variantName}</span>
+                  )}
+                </span>
+                <span className="shrink-0 text-ink-500">
+                  {r.returned} / {it.qty} returned
+                </span>
+                <span
+                  className={
+                    remaining === 0
+                      ? 'shrink-0 rounded-pill bg-ink-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-ink-500'
+                      : 'shrink-0 rounded-pill bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-emerald-700'
+                  }
+                >
+                  {remaining === 0 ? 'Done' : `${remaining} left`}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    </div>
+  )
+}

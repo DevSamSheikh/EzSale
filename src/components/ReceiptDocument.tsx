@@ -8,6 +8,7 @@ import type {
   Transaction,
 } from '../types'
 import { memberStatusLabel } from '../card-store'
+import { getProduct } from '../pos-store'
 
 export type ReceiptLayout = 'thermal' | 'standard'
 
@@ -489,10 +490,21 @@ export function ReceiptDocument({
           <tbody>
             {t.items.map((it, idx) => {
               const lineTotal = it.price * it.qty - (it.lineDiscount ?? 0)
+              const product = getProduct(it.productId)
               return (
                 <tr key={idx} className="border-b border-ink-100">
                   <td className="py-2 align-top">
                     <div className="font-semibold text-ink-900">{it.name}</div>
+                    {it.variantName && (
+                      <div className="text-[10px] font-semibold text-brand-700">
+                        {it.variantName}
+                      </div>
+                    )}
+                    {product?.productCode && (
+                      <div className="font-mono text-[10px] text-ink-400">
+                        {product.productCode}
+                      </div>
+                    )}
                     {it.lineDiscount ? (
                       <div className="text-[10px] text-rose-600">
                         Line discount −{formatMoney(it.lineDiscount, currency)}
@@ -694,9 +706,15 @@ export function ReceiptDocument({
         </div>
         {t.items.map((it, idx) => {
           const lineTotal = it.price * it.qty - (it.lineDiscount ?? 0)
+          const product = getProduct(it.productId)
           return (
             <div key={idx} className="text-[11px] text-ink-800">
               <div className="truncate font-semibold">{it.name}</div>
+              {product?.productCode && (
+                <div className="truncate font-mono text-[9px] text-ink-400">
+                  {product.productCode}
+                </div>
+              )}
               <div className="mt-0.5 flex text-ink-500">
                 <span className="flex-1 truncate">{formatMoney(it.price, currency)} each</span>
                 <span className="w-12 text-right">×{it.qty}</span>

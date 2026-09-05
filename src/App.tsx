@@ -13,11 +13,11 @@ import POSReceiptPage from './pages/app/POSReceiptPage'
 import ProductsPage from './pages/app/ProductsPage'
 import CategoriesPage from './pages/app/CategoriesPage'
 import OrdersPage from './pages/app/OrdersPage'
+import OrderReturnPage from './pages/app/OrderReturnPage'
 import UsersPage from './pages/app/UsersPage'
 import UserDetailsPage from './pages/app/UserDetailsPage'
 import CardsPage from './pages/app/CardsPage'
 import CardDetailsPage from './pages/app/CardDetailsPage'
-import DepositsPage from './pages/app/DepositsPage'
 import DepositRequestsPage from './pages/app/DepositRequestsPage'
 import TransactionsPage from './pages/app/TransactionsPage'
 import ReportsPage from './pages/app/ReportsPage'
@@ -153,6 +153,22 @@ export default function App() {
             }
           />
           <Route
+            path="orders/return"
+            element={
+              <RequirePermission anyOf={['orders.view', 'orders.refund']}>
+                <OrderReturnPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="orders/return/:orderId"
+            element={
+              <RequirePermission anyOf={['orders.view', 'orders.refund']}>
+                <OrderReturnPage />
+              </RequirePermission>
+            }
+          />
+          <Route
             path="users"
             element={
               <RequirePermission anyOf={['users.view']}>
@@ -181,14 +197,6 @@ export default function App() {
             element={
               <RequirePermission anyOf={['cards.view']}>
                 <CardDetailsPage />
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="deposits"
-            element={
-              <RequirePermission anyOf={['deposits.view']}>
-                <DepositsPage />
               </RequirePermission>
             }
           />

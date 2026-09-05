@@ -370,6 +370,10 @@ export interface OrderLineItem {
   qty: number
   /** Optional line-level discount in the order currency */
   lineDiscount?: number
+  /** Optional variant id captured at the time of sale (when the product has variants) */
+  variantId?: string
+  /** Human-readable variant name captured at the time of sale */
+  variantName?: string
 }
 
 export interface Transaction {
@@ -409,6 +413,7 @@ export type FinancialEventType =
   | 'adjustment'
   | 'topup'
   | 'fee'
+  | 'return'
 
 export interface FinancialEvent {
   id: string
@@ -697,5 +702,55 @@ export interface ActivityEntry {
   operatorId?: string
   locationId?: string
   by?: string
+  createdAt: string
+}
+
+// ---- Returns / Refunds --------------------------------------------------
+//
+// A ReturnRecord represents a single return/refund event against an order.
+// Returns can be full ("return the complete order") or item-scoped
+// ("return N units of this line item"). Multiple returns can target the
+// same order as long as the total returned qty per line never exceeds the
+// original sold qty.
+
+export interface ReturnLine {
+  productId: string
+  /** Variant id when the line was a variant line; absent for non-variant products. */
+  variantId?: string
+  /** Display name snapshot — kept on the record so historical returns
+   * remain readable even if the product is later renamed. */
+  productName: string
+  variantName?: string
+  /** Quantity returned by this record (always positive). */
+  qty: number
+  /** Per-unit price snapshot (subtotal / qty, so line-discount is folded in). */
+  unitPrice: number
+  /** Refund amount for this line = qty * unitPrice (rounded to cents). */
+  amount: number
+}
+
+export type ReturnScope = 'full' | 'items'
+
+export interface ReturnRecord {
+  id: string
+  businessId: string
+  /** Id of the original transaction being returned. */
+  orderId: string
+  scope: ReturnScope
+  /** Total refund amount (always positive). */
+  amount: number
+  reason: string
+  /** Whether the membership card balance was reversed. */
+  restoredToCard: boolean
+  /** Snapshot of the card balance before / after the refund, if applicable. */
+  cardBalanceBefore?: number
+  cardBalanceAfter?: number
+  /** Lines that were returned. Empty for a no-op record but always
+   * populated for a real return (full returns include all original lines). */
+  lines: ReturnLine[]
+  /** Id of the negative-balance child transaction created for the refund. */
+  refundTxnId: string
+  /** Operator that processed the return. */
+  by: string
   createdAt: string
 }

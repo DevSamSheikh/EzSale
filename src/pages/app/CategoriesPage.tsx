@@ -4,7 +4,6 @@ import {
   ArrowUp,
   Building2,
   Check,
-  ChevronDown,
   Edit3,
   Eye,
   EyeOff,
@@ -12,6 +11,7 @@ import {
   GripVertical,
   ImageIcon,
   Layers,
+  List,
   MoreHorizontal,
   Package,
   Plus,
@@ -23,13 +23,17 @@ import { PageHeader, StatCard } from '../../components/Primitives'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { ToastViewport, useToast } from '../../components/Toast'
 import {
+  FilterBarSection,
+  FilterSearchInput,
+  FilterSelect,
+} from '../../components/FilterBar'
+import {
   CATEGORY_ICONS,
   CATEGORIES_UPDATED_EVENT,
   createCategory,
   deleteCategory,
   getCategories,
   getCategoryIcon,
-  getCategoriesForBusiness,
   reorderCategories,
   setCategoryStatus,
   shiftCategory,
@@ -133,6 +137,7 @@ function CategoryIcon({ iconKey, image, className = 'h-5 w-5' }: { iconKey?: str
 export default function CategoriesPage() {
   const business = getBusiness()
   const [categories, setCategories] = useState<Category[]>([])
+  const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>(business?.type ?? 'all')
   const [view, setView] = useState<ViewMode>('list')
@@ -181,7 +186,12 @@ export default function CategoriesPage() {
   }, [categories])
 
   const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
     return categories.filter((c) => {
+      if (q) {
+        const hay = [c.name, c.id, c.iconKey ?? ''].join(' ').toLowerCase()
+        if (!hay.includes(q)) return false
+      }
       if (statusFilter !== 'all' && c.status !== statusFilter) return false
       if (scopeFilter !== 'all') {
         if (!c.businessTypes || c.businessTypes.length === 0) return false
@@ -189,7 +199,7 @@ export default function CategoriesPage() {
       }
       return true
     })
-  }, [categories, statusFilter, scopeFilter])
+  }, [categories, search, statusFilter, scopeFilter])
 
   // ---- Drag and drop ----------------------------------------------------
 
@@ -326,7 +336,37 @@ export default function CategoriesPage() {
     setConfirmDelete(null)
   }
 
-  const hasFilters = statusFilter !== 'all' || scopeFilter !== 'all'
+  const hasFilters =
+    !!search.trim() || statusFilter !== 'all' || scopeFilter !== 'all'
+
+  const activeFilterCount =
+    (search.trim() ? 1 : 0) +
+    (statusFilter !== 'all' ? 1 : 0) +
+    (scopeFilter !== 'all' ? 1 : 0)
+
+  function clearAllFilters() {
+    setSearch('')
+    setStatusFilter('all')
+    setScopeFilter('all')
+    playCue('tap')
+  }
+
+  const statusOptions = useMemo(
+    () =>
+      STATUS_FILTERS.filter((s) => s.id !== 'all').map((s) => ({
+        value: s.id as string,
+        label: s.label,
+      })),
+    [],
+  )
+  const scopeOptions = useMemo(
+    () =>
+      SCOPE_FILTERS.filter((s) => s.id !== 'all').map((s) => ({
+        value: s.id as string,
+        label: s.label,
+      })),
+    [],
+  )
 
   return (
     <div>
@@ -356,89 +396,67 @@ export default function CategoriesPage() {
         />
       </div>
 
-      <div className="card p-4 sm:p-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-end">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1 rounded-pill border border-ink-200 bg-white p-1">
-              <Filter className="ml-2 h-3.5 w-3.5 text-ink-400" />
-              {STATUS_FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => setStatusFilter(f.id)}
-                  className={
-                    statusFilter === f.id
-                      ? 'rounded-pill bg-ink-900 px-2.5 py-1 text-[11px] font-semibold text-white'
-                      : 'rounded-pill px-2.5 py-1 text-[11px] font-semibold text-ink-700 hover:bg-ink-50'
-                  }
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            <select
-              className="h-10 !w-40 shrink-0 rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-              value={scopeFilter}
-              onChange={(e) => setScopeFilter(e.target.value as ScopeFilter)}
-            >
-              {SCOPE_FILTERS.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-            <div
-              role="tablist"
-              aria-label="View mode"
-              className="inline-flex items-center rounded-pill border border-ink-200 bg-white p-0.5"
-            >
-              <button
-                role="tab"
-                aria-selected={view === 'list'}
-                onClick={() => setView('list')}
-                className={
-                  view === 'list'
-                    ? 'inline-flex h-7 w-8 items-center justify-center rounded-pill bg-ink-900 text-white'
-                    : 'inline-flex h-7 w-8 items-center justify-center rounded-pill text-ink-500 hover:bg-ink-50'
-                }
-                title="List view"
-              >
-                <Filter className="h-3.5 w-3.5 rotate-90" />
-              </button>
-              <button
-                role="tab"
-                aria-selected={view === 'grid'}
-                onClick={() => setView('grid')}
-                className={
-                  view === 'grid'
-                    ? 'inline-flex h-7 w-8 items-center justify-center rounded-pill bg-ink-900 text-white'
-                    : 'inline-flex h-7 w-8 items-center justify-center rounded-pill text-ink-500 hover:bg-ink-50'
-                }
-                title="Grid view"
-              >
-                <Layers className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
+      <FilterBarSection activeCount={activeFilterCount} onClear={clearAllFilters}>
+        <FilterSearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search by name or ID…"
+        />
+        <FilterSelect
+          label="Status"
+          icon={<Filter className="h-3.5 w-3.5" />}
+          options={statusOptions}
+          selected={statusFilter === 'all' ? [] : [statusFilter]}
+          onChange={(v) => setStatusFilter((v[0] as StatusFilter) ?? 'all')}
+        />
+        <FilterSelect
+          label="Scope"
+          icon={<Building2 className="h-3.5 w-3.5" />}
+          options={scopeOptions}
+          selected={scopeFilter === 'all' ? [] : [scopeFilter]}
+          onChange={(v) => setScopeFilter((v[0] as ScopeFilter) ?? 'all')}
+        />
+        <div
+          role="tablist"
+          aria-label="View mode"
+          className="inline-flex items-center rounded-full border border-ink-200 bg-white p-0.5"
+        >
+          <button
+            role="tab"
+            aria-selected={view === 'list'}
+            onClick={() => setView('list')}
+            className={
+              view === 'list'
+                ? 'inline-flex h-7 w-8 items-center justify-center rounded-full bg-ink-900 text-white'
+                : 'inline-flex h-7 w-8 items-center justify-center rounded-full text-ink-500 hover:bg-ink-50'
+            }
+            title="List view"
+          >
+            <List className="h-3.5 w-3.5" />
+          </button>
+          <button
+            role="tab"
+            aria-selected={view === 'grid'}
+            onClick={() => setView('grid')}
+            className={
+              view === 'grid'
+                ? 'inline-flex h-7 w-8 items-center justify-center rounded-full bg-ink-900 text-white'
+                : 'inline-flex h-7 w-8 items-center justify-center rounded-full text-ink-500 hover:bg-ink-50'
+            }
+            title="Grid view"
+          >
+            <Layers className="h-3.5 w-3.5" />
+          </button>
         </div>
+      </FilterBarSection>
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-500">
+      <div className="card p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-500">
           <div>
             Showing <span className="font-semibold text-ink-700">{filtered.length}</span> of{' '}
             <span className="font-semibold text-ink-700">{categories.length}</span> categories
             {hasFilters ? ' · filtered' : ''} · drag rows to reorder
           </div>
-          {hasFilters && (
-            <button
-              onClick={() => {
-                setStatusFilter('all')
-                setScopeFilter('all')
-                playCue('tap')
-              }}
-              className="text-xs font-semibold text-ink-700 hover:underline"
-            >
-              Reset filters
-            </button>
-          )}
         </div>
 
         {filtered.length === 0 ? (
@@ -1298,10 +1316,3 @@ function labelForType(t: BusinessType) {
       return 'Custom'
   }
 }
-
-// Suppress the unused import warning for ChevronDown which is kept for future
-// filter dropdowns.
-void ChevronDown
-// `getCategoriesForBusiness` is used by ProductsPage; importing it here keeps
-// the module the single source of truth for category types.
-void getCategoriesForBusiness

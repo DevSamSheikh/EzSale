@@ -1400,6 +1400,12 @@ function LocationsSection({
 }) {
   const list = getLocations()
   const l = b.locations
+  // In single-location mode we deliberately hide the chrome that only makes
+  // sense for multi-location operations (per-location tagging, "Pick a
+  // location" pickers, etc.) so the operator isn't shown controls that
+  // don't actually do anything. The toggle + primary location picker stay
+  // visible so the operator can re-enable multi-location at any time.
+  const multi = l.multiLocation
   function update<K extends keyof typeof l>(key: K, value: (typeof l)[K]) {
     setB({ ...b, locations: { ...l, [key]: value } })
   }
@@ -1417,29 +1423,44 @@ function LocationsSection({
           disabled={readOnly}
           onChange={(v) => update('multiLocation', v)}
         />
-        <Toggle
-          label="Tag every transaction with a terminal id"
-          description="Useful when you have multiple registers in the same location."
-          checked={l.tagTransactionsWithTerminal}
-          disabled={readOnly}
-          onChange={(v) => update('tagTransactionsWithTerminal', v)}
-        />
-        <Toggle
-          label="Membership cards usable across locations"
-          description="Members can tap their card at any active location. Disable to restrict cards to a single home location."
-          checked={l.cardsUsableAcrossLocations}
-          disabled={readOnly}
-          onChange={(v) => update('cardsUsableAcrossLocations', v)}
-        />
-        <Toggle
-          label="Require location selection at POS"
-          description="Operators must pick a location before ringing up a sale."
-          checked={l.requireLocationSelectionAtPOS}
-          disabled={readOnly}
-          onChange={(v) => update('requireLocationSelectionAtPOS', v)}
-        />
+        {!multi && (
+          <div className="rounded-2xl border border-ink-200 bg-ink-50/60 p-3 text-[11px] text-ink-600">
+            <div className="font-semibold text-ink-800">Multi-location is off</div>
+            <div className="mt-0.5">
+              This business is running in single-location mode. Per-location tagging,
+              location pickers, and the locations management screen are hidden across
+              the admin. Enable multi-location above to restore them.
+            </div>
+          </div>
+        )}
+        <div
+          className={multi ? '' : 'pointer-events-none opacity-50'}
+          aria-disabled={!multi}
+        >
+          <Toggle
+            label="Tag every transaction with a terminal id"
+            description="Useful when you have multiple registers in the same location."
+            checked={l.tagTransactionsWithTerminal}
+            disabled={readOnly || !multi}
+            onChange={(v) => update('tagTransactionsWithTerminal', v)}
+          />
+          <Toggle
+            label="Membership cards usable across locations"
+            description="Members can tap their card at any active location. Disable to restrict cards to a single home location."
+            checked={l.cardsUsableAcrossLocations}
+            disabled={readOnly || !multi}
+            onChange={(v) => update('cardsUsableAcrossLocations', v)}
+          />
+          <Toggle
+            label="Require location selection at POS"
+            description="Operators must pick a location before ringing up a sale."
+            checked={l.requireLocationSelectionAtPOS}
+            disabled={readOnly || !multi}
+            onChange={(v) => update('requireLocationSelectionAtPOS', v)}
+          />
+        </div>
         <Field
-          label="Default location"
+          label="Primary location"
           hint="Used by the POS when no operator or terminal override is supplied."
         >
           <select
@@ -1459,7 +1480,11 @@ function LocationsSection({
 
       <SettingCard
         title="Registered locations"
-        description="All stores, kiosks and counters currently attached to this business. Open the locations page to add or update any of them."
+        description={
+          multi
+            ? 'All stores, kiosks and counters currently attached to this business. Open the locations page to add or update any of them.'
+            : 'Your single registered location. Multi-location management is disabled, so the locations page is hidden.'
+        }
         icon={Building2}
       >
         <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -1511,11 +1536,18 @@ function LocationsSection({
             </li>
           ))}
         </ul>
-        <div className="border-t border-ink-100 pt-3">
-          <Link to="/app/locations" className="btn-secondary text-xs">
-            <Building2 className="h-3.5 w-3.5" /> Manage locations, managers &amp; terminals
-          </Link>
-        </div>
+        {multi ? (
+          <div className="border-t border-ink-100 pt-3">
+            <Link to="/app/locations" className="btn-secondary text-xs">
+              <Building2 className="h-3.5 w-3.5" /> Manage locations, managers &amp; terminals
+            </Link>
+          </div>
+        ) : (
+          <div className="border-t border-ink-100 pt-3 text-[11px] text-ink-500">
+            Enable multi-location above to manage additional stores, kiosks, and
+            terminals.
+          </div>
+        )}
       </SettingCard>
     </>
   )

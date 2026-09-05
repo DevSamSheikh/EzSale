@@ -1363,6 +1363,169 @@ export function cancelDepositRequest(
   return updated
 }
 
+// ---- Manual deposit recording ------------------------------------------
+//
+// Authorized staff can record a deposit for a member without going through
+// the portal request workflow. This is the legacy "deposits" feature,
+// now funnelled through the Request Deposits screen. The deposit is
+// persisted, the card balance is credited, and the activity log is
+// updated just like a normal top-up.
+
+export interface RecordDepositInput {
+  cardId: string
+  amount: number
+  method?: CardDeposit['method']
+  reference?: string
+  note?: string
+  at?: string
+  by?: string
+}
+
+export interface RecordDepositResult {
+  card: MembershipCard
+  deposit: CardDeposit
+}
+
+export function recordDeposit(
+  input: RecordDepositInput,
+): RecordDepositResult | null {
+  if (input.amount <= 0) return null
+  const card = getCard(input.cardId)
+  if (!card) return null
+  const amount = input.amount
+  const method: CardDeposit['method'] = input.method ?? 'cash'
+  const updated = updateCard(input.cardId, { balance: card.balance + amount })
+  if (!updated) return null
+  const deposit: CardDeposit = {
+    id: uid('dep'),
+    cardId: input.cardId,
+    amount,
+    method,
+    reference: input.reference,
+    note: input.note,
+    at: input.at ?? new Date().toISOString(),
+    by: input.by ?? 'admin@ezsale.app',
+  }
+  persistDeposit(deposit)
+  logActivity(input.cardId, 'deposit', `Top-up via ${method}${input.reference ? ` · ${input.reference}` : ''}`, {
+    amount,
+    by: input.by ?? 'admin@ezsale.app',
+  })
+  return { card: updated, deposit }
+}
+
+// ---- Reopen / Undo / Change Status on finalized deposit requests --------
+//
+// These mutators intentionally do NOT silently flip the status. They keep
+// the request history consistent and, when changing a previously
+// approved/completed request, reverse the matching financial effect
+// (card balance) so the wallet doesn't drift. A new "revert" card deposit
+// is appended to the deposit ledger as the audit trail of the reversal.
+
+export interface RevertDepositRequestResult {
+  request: DepositRequest
+  reversalDeposit: CardDeposit
+  previousBalance: number
+  newBalance: number
+}
+
+export function revertApprovedDepositRequest(
+  id: string,
+  by: string = 'admin@ezsale.app',
+  reason?: string,
+): RevertDepositRequestResult | null {
+  const req = getDepositRequest(id)
+  if (!req) return null
+  if (req.status !== 'approved' && req.status !== 'completed') return null
+  const card = getCard(req.cardId)
+  if (!card) return null
+  const previousBalance = card.balance
+  // Reverse the original top-up by debiting the card. Refuse if the card
+  // has been spent below the deposit amount since — staff should refund /
+  // adjust the underlying transactions first rather than drive the balance
+  // negative.
+  if (card.balance < req.amount) {
+    return null
+  }
+  const reversed = updateCard(req.cardId, { balance: card.balance - req.amount })
+  if (!reversed) return null
+  const reversalDeposit: CardDeposit = {
+    id: uid('dep'),
+    cardId: req.cardId,
+    amount: -req.amount,
+    method: req.method,
+    reference: `Reversal of ${req.id}`,
+    note: reason?.trim() || `Approval reverted by ${by}.`,
+    at: new Date().toISOString(),
+    by,
+  }
+  persistDeposit(reversalDeposit)
+  logActivity(req.cardId, 'deposit', `Reversal of ${req.id}${reason ? ` — ${reason}` : ''}`, {
+    amount: -req.amount,
+    by,
+  })
+  const updated = patchDepositRequest(id, {
+    status: 'pending',
+    reviewedAt: new Date().toISOString(),
+    reviewedBy: by,
+    rejectionReason: undefined,
+    resultingDepositId: undefined,
+    resultingTransactionId: undefined,
+  })
+  if (!updated) return null
+  try {
+    recordActivity({
+      category: 'transaction',
+      severity: 'warning',
+      title: 'Deposit approval reverted',
+      body: `${fmtMoney(req.amount)} debited from card ${req.cardId} by ${by}${reason ? ` — ${reason}` : ''}.`,
+      cardId: req.cardId,
+      memberId: req.memberId,
+    })
+  } catch {
+    /* best-effort */
+  }
+  return {
+    request: updated,
+    reversalDeposit,
+    previousBalance,
+    newBalance: reversed.balance,
+  }
+}
+
+export function reopenRejectedDepositRequest(
+  id: string,
+  by: string = 'admin@ezsale.app',
+  reason?: string,
+): DepositRequest | null {
+  const req = getDepositRequest(id)
+  if (!req) return null
+  if (req.status !== 'rejected' && req.status !== 'cancelled') return null
+  // Moving a rejected/cancelled request back to pending does not move
+  // money — no card balance change. The reviewer (or the member via the
+  // portal) can then approve it through the normal flow.
+  const updated = patchDepositRequest(id, {
+    status: 'pending',
+    reviewedAt: new Date().toISOString(),
+    reviewedBy: by,
+    rejectionReason: undefined,
+  })
+  if (!updated) return null
+  try {
+    recordActivity({
+      category: 'transaction',
+      severity: 'info',
+      title: 'Deposit request reopened',
+      body: `Request ${req.id} moved back to pending by ${by}${reason ? ` — ${reason}` : ''}.`,
+      cardId: req.cardId,
+      memberId: req.memberId,
+    })
+  } catch {
+    /* best-effort */
+  }
+  return updated
+}
+
 export function depositRequestStatusLabel(s: DepositRequestStatus): string {
   switch (s) {
     case 'pending':

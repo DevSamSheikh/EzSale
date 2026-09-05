@@ -33,6 +33,17 @@ export interface POSProduct {
   cost?: number
   /** Auto-generated or admin-entered SKU */
   sku: string
+  /** Stable product code — unique within the catalog, searchable from POS,
+   * scannable at checkout when paired with a barcode scanner. Optional. */
+  productCode?: string
+  /** Optional barcode value (often the same as productCode / SKU). */
+  barcode?: string
+  /**
+   * When true, the POS shows a price-edit dialog before adding the product
+   * to the cart. The original product price is never mutated — the manual
+   * price is captured on the cart line and order item instead.
+   */
+  allowPriceEdit?: boolean
   category: string
   status: ProductStatus
   /** Optional tax rate override; falls back to business.taxRate */
@@ -63,6 +74,10 @@ export interface CartLine {
   qty: number
   /** Variant id selected at the time the line was added */
   variantId?: string
+  /** Optional override selling price captured by the price-edit POS flow.
+   * When set, this is the price actually charged on this line — the
+   * product's configured `price` is left untouched. */
+  overridePrice?: number
 }
 
 const KEY_PRODUCTS = 'ezsale:pos:products'
@@ -351,6 +366,79 @@ export function getProduct(id: string): POSProduct | null {
   return getProducts().find((p) => p.id === id) ?? null
 }
 
+/**
+ * Returns the tracked stock for a product (or a specific variant) currently
+ * available, accounting for the quantity already in the cart. Returns
+ * `undefined` when stock is "unlimited" (not tracked). Returns a finite
+ * number (possibly 0) when stock is tracked.
+ */
+export function availableStock(
+  product: POSProduct,
+  variantId?: string,
+  existingInCart = 0,
+): number | undefined {
+  if (variantId) {
+    const v = product.variants.find((x) => x.id === variantId)
+    if (!v) return undefined
+    if (v.stock === undefined) return undefined
+    return Math.max(0, v.stock - existingInCart)
+  }
+  if (product.stock === undefined) return undefined
+  return Math.max(0, product.stock - existingInCart)
+}
+
+export type DecrementStockResult =
+  | { ok: true; remaining: number | undefined }
+  | { ok: false; reason: 'insufficient' | 'not_found' | 'invalid' }
+
+/**
+ * Atomically decrements stock for a product (or a specific variant) by
+ * `qty`. No-op (returns `ok: true, remaining: undefined`) when stock is
+ * unlimited (`undefined`). Persists the product list and broadcasts the
+ * `PRODUCTS_UPDATED_EVENT` so any open POS session refreshes.
+ */
+export function decrementStock(
+  productId: string,
+  qty: number,
+  variantId?: string,
+): DecrementStockResult {
+  if (qty <= 0) return { ok: false, reason: 'invalid' }
+  const all = getProducts()
+  const idx = all.findIndex((p) => p.id === productId)
+  if (idx < 0) return { ok: false, reason: 'not_found' }
+  const current = all[idx]
+  if (variantId) {
+    const vIdx = current.variants.findIndex((x) => x.id === variantId)
+    if (vIdx < 0) return { ok: false, reason: 'not_found' }
+    const v = current.variants[vIdx]
+    if (v.stock === undefined) {
+      // Unlimited — still bump updatedAt so admin views reflect activity.
+      const nextVariants = [...current.variants]
+      nextVariants[vIdx] = { ...v }
+      all[idx] = { ...current, variants: nextVariants, updatedAt: nowIso() }
+      saveProducts(all)
+      return { ok: true, remaining: undefined }
+    }
+    const remaining = v.stock - qty
+    if (remaining < 0) return { ok: false, reason: 'insufficient' }
+    const nextVariants = [...current.variants]
+    nextVariants[vIdx] = { ...v, stock: remaining }
+    all[idx] = { ...current, variants: nextVariants, updatedAt: nowIso() }
+    saveProducts(all)
+    return { ok: true, remaining }
+  }
+  if (current.stock === undefined) {
+    all[idx] = { ...current, updatedAt: nowIso() }
+    saveProducts(all)
+    return { ok: true, remaining: undefined }
+  }
+  const remaining = current.stock - qty
+  if (remaining < 0) return { ok: false, reason: 'insufficient' }
+  all[idx] = { ...current, stock: remaining, updatedAt: nowIso() }
+  saveProducts(all)
+  return { ok: true, remaining }
+}
+
 export interface NewProductInput {
   name: string
   description?: string
@@ -358,6 +446,9 @@ export interface NewProductInput {
   price: number
   cost?: number
   sku?: string
+  productCode?: string
+  barcode?: string
+  allowPriceEdit?: boolean
   category: string
   status?: ProductStatus
   taxRate?: number
@@ -387,10 +478,21 @@ function makeSku(name: string, existing: POSProduct[]): string {
   return `${base}-${Date.now()}`
 }
 
+function makeProductCode(code: string, existing: POSProduct[], excludeId?: string): string {
+  const wanted = code.trim().toUpperCase()
+  const collision = existing.find(
+    (p) => p.id !== excludeId && (p.productCode ?? '').toUpperCase() === wanted,
+  )
+  return collision ? makeSku(wanted || 'CODE', existing) : wanted
+}
+
 export function createProduct(input: NewProductInput): POSProduct {
   const all = getProducts()
   const id = uid('prod')
   const sku = input.sku?.trim() ? input.sku.trim().toUpperCase() : makeSku(input.name, all)
+  const productCode = input.productCode?.trim()
+    ? makeProductCode(input.productCode, all)
+    : undefined
   const now = nowIso()
   const product: POSProduct = {
     id,
@@ -402,6 +504,9 @@ export function createProduct(input: NewProductInput): POSProduct {
     price: Math.max(0, input.price),
     cost: input.cost,
     sku,
+    productCode,
+    barcode: input.barcode?.trim() || undefined,
+    allowPriceEdit: input.allowPriceEdit ?? false,
     category: input.category.trim() || 'Uncategorized',
     status: input.status ?? 'active',
     taxRate: input.taxRate,
@@ -442,6 +547,15 @@ export function updateProduct(id: string, patch: ProductPatch): POSProduct | nul
     const collision = all.find((p) => p.id !== id && p.sku.toUpperCase() === wanted)
     next.sku = collision ? makeSku(wanted, all) : wanted
   }
+  // Product code must stay unique within the catalog.
+  if (patch.productCode !== undefined) {
+    const trimmed = patch.productCode.trim()
+    if (!trimmed) {
+      next.productCode = undefined
+    } else {
+      next.productCode = makeProductCode(trimmed, all, id)
+    }
+  }
   all[idx] = next
   saveProducts(all)
   return next
@@ -465,6 +579,9 @@ export function duplicateProduct(id: string): POSProduct | null {
     price: original.price,
     cost: original.cost,
     category: original.category,
+    productCode: original.productCode ? `${original.productCode}-COPY` : undefined,
+    barcode: original.barcode,
+    allowPriceEdit: original.allowPriceEdit,
     taxRate: original.taxRate,
     discount: original.discount ? { ...original.discount } : undefined,
     variants: original.variants.map((v) => ({ ...v, id: uid('var') })),
@@ -501,27 +618,70 @@ export function addToCart(
   productId: string,
   qty: number = 1,
   variantId?: string,
+  overridePrice?: number,
 ) {
   const cart = getCart()
-  const existing = cart.find((c) => c.productId === productId && c.variantId === variantId)
+  // Match by product + variant. If the new line carries an override price
+  // (the price-edit POS flow), keep that price on the existing line —
+  // stacking a normal-priced item onto a custom-priced line would mix two
+  // distinct historical prices in a single cart row.
+  const key = (line: CartLine) =>
+    line.productId === productId && line.variantId === variantId
+  const priceKey =
+    overridePrice !== undefined
+      ? (line: CartLine) =>
+          line.productId === productId &&
+          line.variantId === variantId &&
+          line.overridePrice === overridePrice
+      : (line: CartLine) =>
+          line.productId === productId &&
+          line.variantId === variantId &&
+          line.overridePrice === undefined
+  const existing = cart.find(priceKey)
   if (existing) {
     existing.qty = Math.max(1, existing.qty + qty)
   } else {
-    cart.push({ productId, qty: Math.max(1, qty), variantId })
+    cart.push({
+      productId,
+      qty: Math.max(1, qty),
+      variantId,
+      overridePrice,
+    })
   }
+  // drop unused
+  void key
   saveCart(cart)
   return cart
 }
 
-export function setCartQty(productId: string, qty: number, variantId?: string) {
+export function setCartQty(
+  productId: string,
+  qty: number,
+  variantId?: string,
+  overridePrice?: number,
+) {
   const cart = getCart()
   if (qty <= 0) {
-    saveCart(cart.filter((c) => !(c.productId === productId && c.variantId === variantId)))
+    saveCart(
+      cart.filter(
+        (c) =>
+          !(
+            c.productId === productId &&
+            c.variantId === variantId &&
+            c.overridePrice === overridePrice
+          ),
+      ),
+    )
     return
   }
-  const existing = cart.find((c) => c.productId === productId && c.variantId === variantId)
+  const existing = cart.find(
+    (c) =>
+      c.productId === productId &&
+      c.variantId === variantId &&
+      c.overridePrice === overridePrice,
+  )
   if (existing) existing.qty = qty
-  else cart.push({ productId, qty, variantId })
+  else cart.push({ productId, qty, variantId, overridePrice })
   saveCart(cart)
 }
 

@@ -17,13 +17,16 @@ import {
 } from 'lucide-react'
 import {
   addToCart,
+  availableStock,
   clearCart,
+  decrementStock,
   getCart,
   getCategories,
   getProducts,
   PRODUCTS_UPDATED_EVENT,
   removeFromCart,
   setCartQty,
+  type CartLine,
   type POSProduct,
 } from '../../pos-store'
 import {
@@ -34,6 +37,8 @@ import { getBusiness } from '../../store'
 import { POSNavbar } from '../../components/POSNavbar'
 import { POSAlertStrip, posToastForNotification } from '../../components/POSAlertStrip'
 import { BottomSheet } from '../../components/BottomSheet'
+import { PriceEditModal } from '../../components/PriceEditModal'
+import { VariantPickerModal } from '../../components/VariantPickerModal'
 import { getAdminNotifications, useNotificationsTick } from '../../notifications-store'
 import { playCue } from '../../audio'
 
@@ -182,16 +187,24 @@ function ProductCard({
 function CartItemRow({
   product,
   qty,
+  overridePrice,
+  variantName,
   onInc,
   onDec,
   onRemove,
 }: {
   product: POSProduct
   qty: number
+  /** Optional price the cashier entered via the price-edit POS flow. */
+  overridePrice?: number
+  /** Optional variant name (when this line was added via the variant picker). */
+  variantName?: string
   onInc: () => void
   onDec: () => void
   onRemove: () => void
 }) {
+  const unitPrice = typeof overridePrice === 'number' ? overridePrice : product.price
+  const isCustomPrice = typeof overridePrice === 'number' && overridePrice !== product.price
   return (
     <div className="flex min-h-[96px] items-stretch gap-3 overflow-hidden rounded-2xl border border-ink-100 bg-white p-1.5 sm:p-0">
       <div className="relative m-1 grid h-[80px] w-[80px] shrink-0 place-items-center overflow-hidden rounded-xl bg-ink-50 sm:h-[88px] sm:w-[88px]">
@@ -205,7 +218,17 @@ function CartItemRow({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-bold text-ink-900">{product.name}</div>
+            {variantName && (
+              <div className="mt-0.5 truncate text-[11px] font-semibold text-brand-700">
+                {variantName}
+              </div>
+            )}
             <div className="truncate text-[11px] text-ink-500">{product.description}</div>
+            {product.productCode && (
+              <div className="mt-0.5 truncate font-mono text-[10px] text-ink-400">
+                {product.productCode}
+              </div>
+            )}
           </div>
           <button
             onClick={onRemove}
@@ -217,7 +240,18 @@ function CartItemRow({
         </div>
         <div className="mt-1 flex items-center justify-between gap-2">
           <div className="text-xs text-ink-500">
-            Total <span className="font-bold text-ink-900">{currency(product.price * qty)}</span>
+            <span className={isCustomPrice ? 'text-ink-400 line-through' : ''}>
+              {currency(product.price)}
+            </span>
+            {isCustomPrice && (
+              <span className="ml-1 inline-flex items-center rounded-pill border border-amber-200 bg-amber-50 px-1.5 py-px font-mono text-[9px] font-bold uppercase tracking-wide text-amber-700">
+                Custom
+              </span>
+            )}
+            <span className="ml-2">
+              × {qty} ={' '}
+              <span className="font-bold text-ink-900">{currency(unitPrice * qty)}</span>
+            </span>
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -474,10 +508,10 @@ function CartPanel({
   variant = 'desktop',
 }: {
   products: POSProduct[]
-  cart: { productId: string; qty: number }[]
+  cart: CartLine[]
   onInc: (id: string) => void
   onDec: (id: string) => void
-  onRemove: (id: string) => void
+  onRemove: (id: string, variantId?: string) => void
   onClear: () => void
   onCheckout: () => void
   onClose?: () => void
@@ -493,47 +527,69 @@ function CartPanel({
   onApplyCustom: () => void
   variant?: 'desktop' | 'mobile'
 }) {
-  const lines = useMemo(
-    () =>
-      cart
-        .map((c) => {
-          const p = products.find((x) => x.id === c.productId)
-          return p ? { p, qty: c.qty } : null
-        })
-        .filter((x): x is { p: POSProduct; qty: number } => x !== null),
-    [cart, products],
-  )
+const lines = useMemo(() => {
+    const out: Array<{
+      p: POSProduct
+      qty: number
+      overridePrice?: number
+      variantId?: string
+      variantName?: string
+    }> = []
+    for (const c of cart) {
+      const p = products.find((x) => x.id === c.productId)
+      if (!p) continue
+      const variant = c.variantId
+        ? p.variants.find((v) => v.id === c.variantId)
+        : undefined
+      out.push({
+        p,
+        qty: c.qty,
+        overridePrice: c.overridePrice,
+        variantId: c.variantId,
+        variantName: variant?.name,
+      })
+    }
+    return out
+  }, [cart, products])
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-soft">
-      <div className="flex shrink-0 items-center justify-between border-b border-ink-100 px-5 py-4">
-        <div className="flex items-center gap-2">
-          <div className="text-lg font-bold tracking-tight text-ink-900">Products</div>
-          {lines.length > 0 && (
-            <span className="grid h-5 min-w-5 place-items-center rounded-full bg-ink-100 px-1.5 text-[11px] font-semibold text-ink-700">
-              {lines.length}
-            </span>
-          )}
+      <div className="flex shrink-0 flex-col gap-1 border-b border-ink-100 px-5 py-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="text-lg font-bold tracking-tight text-ink-900">Cart</div>
+            {lines.length > 0 && (
+              <span className="grid h-5 min-w-5 place-items-center rounded-full bg-ink-100 px-1.5 text-[11px] font-semibold text-ink-700">
+                {lines.length}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {lines.length > 0 && (
+              <button
+                onClick={onClear}
+                className="text-xs font-semibold text-rose-500 transition-colors hover:text-rose-600"
+              >
+                Delete All
+              </button>
+            )}
+            {variant === 'mobile' && onClose && (
+              <button
+                onClick={onClose}
+                className="grid h-8 w-8 place-items-center rounded-full bg-ink-100 text-ink-700 lg:hidden"
+                aria-label="Close cart"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {lines.length > 0 && (
-            <button
-              onClick={onClear}
-              className="text-xs font-semibold text-rose-500 transition-colors hover:text-rose-600"
-            >
-              Delete All
-            </button>
-          )}
-          {variant === 'mobile' && onClose && (
-            <button
-              onClick={onClose}
-              className="grid h-8 w-8 place-items-center rounded-full bg-ink-100 text-ink-700 lg:hidden"
-              aria-label="Close cart"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
+        {lines.length > 0 && (
+          <div className="text-[11px] text-ink-500">
+            {lines.length} item{lines.length === 1 ? '' : 's'} ·{' '}
+            {lines.reduce((s, l) => s + l.qty, 0)} qty
+          </div>
+        )}
       </div>
 
       <div className="pos-scroll min-h-0 flex-1 space-y-2.5 overflow-y-auto px-4 py-4">
@@ -550,12 +606,14 @@ function CartPanel({
         ) : (
           lines.map((l) => (
             <CartItemRow
-              key={l.p.id}
+              key={l.p.id + (l.overridePrice ?? '') + (l.variantId ?? '')}
               product={l.p}
               qty={l.qty}
+              overridePrice={l.overridePrice}
+              variantName={l.variantName}
               onInc={() => onInc(l.p.id)}
               onDec={() => onDec(l.p.id)}
-              onRemove={() => onRemove(l.p.id)}
+              onRemove={() => onRemove(l.p.id, l.variantId)}
             />
           ))
         )}
@@ -585,12 +643,15 @@ export default function POSPage() {
   const navigate = useNavigate()
   const business = getBusiness()
   const [products, setProducts] = useState<POSProduct[]>([])
-  const [cart, setCart] = useState<{ productId: string; qty: number }[]>([])
+  const [cart, setCart] = useState<CartLine[]>([])
   const [activeCat, setActiveCat] = useState<CategoryFilter>('All')
   const [query, setQuery] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [categoriesTick, setCategoriesTick] = useState(0)
+  const [priceEditProduct, setPriceEditProduct] = useState<POSProduct | null>(null)
+  const [variantPickerProduct, setVariantPickerProduct] =
+    useState<POSProduct | null>(null)
   const [promoId, setPromoId] = useState<PromoId>(() => {
     if (typeof window === 'undefined') return 'default'
     return (localStorage.getItem('ezsale:pos:promo') as PromoId) || 'default'
@@ -721,7 +782,10 @@ export default function POSPage() {
       return (
         p.name.toLowerCase().includes(q) ||
         p.description.toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q)
+        p.category.toLowerCase().includes(q) ||
+        (p.sku ?? '').toLowerCase().includes(q) ||
+        (p.productCode ?? '').toLowerCase().includes(q) ||
+        (p.barcode ?? '').toLowerCase().includes(q)
       )
     })
   }, [products, activeCat, query])
@@ -746,7 +810,20 @@ export default function POSPage() {
       : PROMOS[promoId]
   const subtotal = cart.reduce((s, c) => {
     const p = products.find((x) => x.id === c.productId)
-    return p ? s + p.price * c.qty : s
+    if (!p) return s
+    // Resolve the line's effective unit price: an explicit override
+    // always wins; otherwise a selected variant's price replaces the
+    // product's base price.
+    let linePrice: number
+    if (typeof c.overridePrice === 'number') {
+      linePrice = c.overridePrice
+    } else if (c.variantId) {
+      const v = p.variants.find((x) => x.id === c.variantId)
+      linePrice = v ? v.price : p.price
+    } else {
+      linePrice = p.price
+    }
+    return s + linePrice * c.qty
   }, 0)
   const discount = computeDiscount(subtotal, promo)
   const total = Math.max(0, subtotal - discount)
@@ -754,30 +831,163 @@ export default function POSPage() {
   function refreshCart() {
     setCart(getCart())
   }
-  function handleAdd(id: string, name: string) {
-    addToCart(id, 1)
+
+  /**
+   * Returns one unit of stock for a cart line. Used when a line is
+   * decremented, removed, or the cart is cleared so the operator can
+   * re-sell it. Limited (`undefined`) stock is a no-op. Negative stock
+   * never escapes — we clamp to 0.
+   */
+  function releaseStock(
+    product: POSProduct | undefined,
+    qty: number,
+    variantId?: string,
+  ) {
+    if (!product) return
+    const all = getProducts()
+    const idx = all.findIndex((p) => p.id === product.id)
+    if (idx < 0) return
+    const current = all[idx]
+    if (variantId) {
+      const vIdx = current.variants.findIndex((v) => v.id === variantId)
+      if (vIdx < 0) return
+      const v = current.variants[vIdx]
+      if (v.stock === undefined) return
+      const nextVariants = [...current.variants]
+      nextVariants[vIdx] = { ...v, stock: v.stock + qty }
+      all[idx] = { ...current, variants: nextVariants, updatedAt: new Date().toISOString() }
+    } else {
+      if (current.stock === undefined) return
+      all[idx] = { ...current, stock: current.stock + qty, updatedAt: new Date().toISOString() }
+    }
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('ezsale:pos:products', JSON.stringify(all))
+      window.dispatchEvent(new CustomEvent(PRODUCTS_UPDATED_EVENT))
+    }
+  }
+
+  function handleAdd(product: POSProduct) {
+    if (product.allowPriceEdit) {
+      // Defer adding to the cart until the cashier confirms a (possibly
+      // custom) selling price. Cancel simply dismisses without touching the
+      // cart.
+      setPriceEditProduct(product)
+      return
+    }
+    if (product.variants.length > 0) {
+      // Open the variant picker. The actual add happens from
+      // `handleAddVariant` after the cashier picks a variant and quantity.
+      setVariantPickerProduct(product)
+      return
+    }
+    const result = decrementStock(product.id, 1)
+    if (!result.ok) {
+      setToast(`Only ${availableStock(product) ?? 0} of ${product.name} left in stock`)
+      playCue('warning')
+      return
+    }
+    addToCart(product.id, 1)
     refreshCart()
-    setToast(`Added ${name}`)
+    setToast(`Added ${product.name}`)
     playCue('success')
   }
+  function handleAddVariant(variantId: string, qty: number) {
+    if (!variantPickerProduct) return
+    const product = variantPickerProduct
+    const result = decrementStock(product.id, qty, variantId)
+    if (!result.ok) {
+      const available = availableStock(product, variantId) ?? 0
+      setToast(
+        available === 0
+          ? `${product.name} is out of stock`
+          : `Only ${available} of ${product.name} left in stock`,
+      )
+      playCue('warning')
+      return
+    }
+    addToCart(product.id, qty, variantId)
+    const v = product.variants.find((x) => x.id === variantId)
+    setToast(`Added ${product.name}${v ? ` — ${v.name}` : ''}`)
+    playCue('success')
+    setVariantPickerProduct(null)
+  }
+  function handleConfirmPriceEdit(price: number) {
+    if (!priceEditProduct) return
+    const product = priceEditProduct
+    const result = decrementStock(product.id, 1)
+    if (!result.ok) {
+      setToast(`Only ${availableStock(product) ?? 0} of ${product.name} left in stock`)
+      playCue('warning')
+      setPriceEditProduct(null)
+      return
+    }
+    addToCart(product.id, 1, undefined, price)
+    setPriceEditProduct(null)
+    refreshCart()
+    setToast(`Added ${product.name} at $${price.toFixed(2)}`)
+    playCue('success')
+  }
+  function handleCancelPriceEdit() {
+    setPriceEditProduct(null)
+    playCue('tap')
+  }
   function handleInc(id: string) {
-    const cur = cart.find((c) => c.productId === id)?.qty ?? 0
-    setCartQty(id, cur + 1)
+    // Prefer the standard-priced line so we never silently mutate a custom
+    // price override entered via the price-edit flow.
+    const line = cart.find(
+      (c) => c.productId === id && c.overridePrice === undefined,
+    )
+    if (!line) return
+    const product = products.find((p) => p.id === id)
+    if (!product) return
+    const result = decrementStock(id, 1, line.variantId)
+    if (!result.ok) {
+      const available = availableStock(product, line.variantId) ?? 0
+      setToast(available === 0 ? 'Out of stock' : `Only ${available} left in stock`)
+      playCue('warning')
+      return
+    }
+    setCartQty(id, line.qty + 1, line.variantId)
     refreshCart()
     playCue('tap')
   }
   function handleDec(id: string) {
-    const cur = cart.find((c) => c.productId === id)?.qty ?? 0
-    setCartQty(id, Math.max(1, cur - 1))
+    // Match the standard-priced line first (no override price), so we
+    // never silently mutate a custom-priced line.
+    const line = cart.find(
+      (c) => c.productId === id && c.overridePrice === undefined,
+    )
+    if (!line) return
+    if (line.qty <= 1) {
+      handleRemove(id, line.variantId)
+      return
+    }
+    // Release one unit of stock before decrementing the cart.
+    releaseStock(products.find((p) => p.id === id), 1, line.variantId)
+    setCartQty(id, line.qty - 1, line.variantId)
     refreshCart()
     playCue('tap')
   }
-  function handleRemove(id: string) {
-    removeFromCart(id)
+  function handleRemove(id: string, variantId?: string) {
+    // Restore every reserved unit before removing the line.
+    const line = cart.find(
+      (c) =>
+        c.productId === id &&
+        c.variantId === variantId &&
+        c.overridePrice === undefined,
+    )
+    if (line) {
+      releaseStock(products.find((p) => p.id === id), line.qty, line.variantId)
+    }
+    removeFromCart(id, variantId)
     refreshCart()
     playCue('warning')
   }
   function handleClear() {
+    // Release all reserved stock before clearing.
+    cart.forEach((c) => {
+      releaseStock(products.find((p) => p.id === c.productId), c.qty, c.variantId)
+    })
     clearCart()
     refreshCart()
     playCue('danger')
@@ -891,7 +1101,7 @@ export default function POSPage() {
                     key={p.id}
                     product={p}
                     qtyInCart={qtyMap[p.id] ?? 0}
-                    onAdd={() => handleAdd(p.id, p.name)}
+                    onAdd={() => handleAdd(p)}
                     onInc={() => handleInc(p.id)}
                     onDec={() => handleDec(p.id)}
                     onToggleFav={() => toggleFav(p.id)}
@@ -982,6 +1192,22 @@ export default function POSPage() {
           onClose={() => setDrawerOpen(false)}
         />
       </BottomSheet>
+
+      {priceEditProduct && (
+        <PriceEditModal
+          product={priceEditProduct}
+          onConfirm={handleConfirmPriceEdit}
+          onCancel={handleCancelPriceEdit}
+        />
+      )}
+
+      {variantPickerProduct && (
+        <VariantPickerModal
+          product={variantPickerProduct}
+          onClose={() => setVariantPickerProduct(null)}
+          onAdd={handleAddVariant}
+        />
+      )}
 
       {toast && (
         <div className="pointer-events-none fixed bottom-24 left-1/2 z-50 -translate-x-1/2 lg:bottom-4">

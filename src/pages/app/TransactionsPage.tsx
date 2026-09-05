@@ -18,6 +18,7 @@ import { PageHeader, EmptyState, StatCard } from '../../components/Primitives'
 import { ResponsiveTable, Field, FieldRow } from '../../components/ResponsiveTable'
 import { TransactionDetailsDrawer } from '../../components/TransactionDetailsDrawer'
 import {
+  FilterBarSection,
   FilterDateRange,
   FilterSearchInput,
   FilterSelect,
@@ -259,66 +260,55 @@ export default function TransactionsPage() {
         />
       </div>
 
-      <div className="card mb-4 p-4 sm:p-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <FilterSearchInput
-            value={filters.search}
-            onChange={(v) => setFilters((f) => ({ ...f, search: v }))}
-            placeholder="Search TX ID, reference, card, operator…"
-          />
-          <FilterDateRange
-            from={filters.dateFrom}
-            to={filters.dateTo}
-            onChange={(next) =>
-              setFilters((f) => ({ ...f, dateFrom: next.from, dateTo: next.to }))
-            }
-          />
-          <FilterSelect
-            label="Type"
-            icon={<Filter className="h-3.5 w-3.5" />}
-            options={statusOptions}
-            selected={filters.statuses}
-            onChange={(v) => setFilters((f) => ({ ...f, statuses: v }))}
-          />
-          <FilterSelect
-            label="Method"
-            icon={<CreditCard className="h-3.5 w-3.5" />}
-            options={methodOptions}
-            selected={filters.methods}
-            onChange={(v) => setFilters((f) => ({ ...f, methods: v }))}
-          />
-          <FilterSelect
-            label="User"
-            icon={<UserIcon className="h-3.5 w-3.5" />}
-            options={memberOptions}
-            selected={filters.memberIds}
-            onChange={(v) => setFilters((f) => ({ ...f, memberIds: v }))}
-          />
-<FilterSelect
-            label="Card"
-            icon={<CreditCard className="h-3.5 w-3.5" />}
-            options={cardOptions}
-            selected={filters.cardIds ?? []}
-            onChange={(v) => setFilters((f) => ({ ...f, cardIds: v }))}
-          />
-          <FilterSelect
-            label="Location"
-            icon={<MapPin className="h-3.5 w-3.5" />}
-            options={locationOptions}
-            selected={filters.locationIds}
-            onChange={(v) => setFilters((f) => ({ ...f, locationIds: v }))}
-          />
-          {hasFilters && (
-            <button
-              type="button"
-              onClick={clearAll}
-              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-ink-200 bg-white px-3 text-xs font-semibold text-ink-700 hover:bg-ink-50"
-            >
-              <X className="h-3 w-3" /> Clear ({filterCount})
-            </button>
-          )}
-        </div>
-      </div>
+      <FilterBarSection activeCount={filterCount} onClear={clearAll}>
+        <FilterSearchInput
+          value={filters.search}
+          onChange={(v) => setFilters((f) => ({ ...f, search: v }))}
+          placeholder="Search TX ID, reference, card, operator…"
+        />
+        <FilterDateRange
+          from={filters.dateFrom}
+          to={filters.dateTo}
+          onChange={(next) =>
+            setFilters((f) => ({ ...f, dateFrom: next.from, dateTo: next.to }))
+          }
+        />
+        <FilterSelect
+          label="Type"
+          icon={<Filter className="h-3.5 w-3.5" />}
+          options={statusOptions}
+          selected={filters.statuses}
+          onChange={(v) => setFilters((f) => ({ ...f, statuses: v }))}
+        />
+        <FilterSelect
+          label="Method"
+          icon={<CreditCard className="h-3.5 w-3.5" />}
+          options={methodOptions}
+          selected={filters.methods}
+          onChange={(v) => setFilters((f) => ({ ...f, methods: v }))}
+        />
+        <FilterSelect
+          label="User"
+          icon={<UserIcon className="h-3.5 w-3.5" />}
+          options={memberOptions}
+          selected={filters.memberIds}
+          onChange={(v) => setFilters((f) => ({ ...f, memberIds: v }))}
+        />
+        <FilterSelect
+          label="Card"
+          icon={<CreditCard className="h-3.5 w-3.5" />}
+          options={cardOptions}
+          selected={filters.cardIds ?? []}
+          onChange={(v) => setFilters((f) => ({ ...f, cardIds: v }))}
+        />
+        <FilterSelect
+          label="Location"
+          icon={<MapPin className="h-3.5 w-3.5" />}
+          options={locationOptions}
+          selected={filters.locationIds}
+          onChange={(v) => setFilters((f) => ({ ...f, locationIds: v }))}
+        />
+      </FilterBarSection>
 
       <TransactionsTable
         transactions={filtered}
@@ -462,7 +452,14 @@ function TransactionsTable({
                       <span className="grid h-4 w-4 place-items-center rounded-full bg-ink-100 text-[10px] font-bold text-ink-700">
                         {it.qty}
                       </span>
-                      <span className="truncate">{it.name}</span>
+                      <span className="truncate">
+                        {it.name}
+                        {it.variantName && (
+                          <span className="ml-1 text-[10px] font-semibold text-brand-700">
+                            · {it.variantName}
+                          </span>
+                        )}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -644,6 +641,7 @@ function TransactionsTable({
         renderRow={renderRow}
         renderCard={renderCard}
         tableClassName="w-full text-sm"
+        onRowClick={(t) => onSelect(t)}
         empty={
           <EmptyState
             icon={<ArrowLeftRight className="h-7 w-7" />}

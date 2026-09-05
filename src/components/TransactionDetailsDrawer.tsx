@@ -22,6 +22,8 @@ import {
   X,
 } from 'lucide-react'
 import { DrawerShell } from './Drawer'
+import { getProduct } from '../pos-store'
+import { getCardDeposits } from '../card-store'
 import {
   buildOrderContext,
   formatCurrency,
@@ -54,6 +56,7 @@ import {
   remainingRefundable,
 } from '../orders-store'
 import { getCurrentOperator, operatorHas } from '../operators-store'
+import { paymentMethodLabel } from '../payment-store'
 
 interface TransactionDetailsDrawerProps {
   txn: Transaction
@@ -298,27 +301,40 @@ export function TransactionDetailsDrawer({
                 </div>
               ) : (
                 <ul className="divide-y divide-ink-100">
-                  {txn.items.map((it, idx) => (
-                    <li key={idx} className="flex items-center gap-3 px-4 py-3">
-                      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-ink-50 text-ink-700">
-                        <ReceiptIcon className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-semibold text-ink-900">
-                          {it.name}
+                  {txn.items.map((it, idx) => {
+                    const product = getProduct(it.productId)
+                    return (
+                      <li key={idx} className="flex items-center gap-3 px-4 py-3">
+                        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-ink-50 text-ink-700">
+                          <ReceiptIcon className="h-4 w-4" />
                         </div>
-                        <div className="text-[11px] text-ink-500">
-                          {formatCurrencyPlain(it.price, currency)} each
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-semibold text-ink-900">
+                            {it.name}
+                          </div>
+                          {it.variantName && (
+                            <div className="mt-0.5 truncate text-[11px] font-semibold text-brand-700">
+                              {it.variantName}
+                            </div>
+                          )}
+                          {(product?.productCode || product?.sku) && (
+                            <div className="truncate font-mono text-[10px] text-ink-400">
+                              {product.productCode ? product.productCode : `SKU ${product.sku}`}
+                            </div>
+                          )}
+                          <div className="text-[11px] text-ink-500">
+                            {formatCurrencyPlain(it.price, currency)} each
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[11px] text-ink-500">× {it.qty}</div>
-                        <div className="text-sm font-bold text-ink-900">
-                          {formatCurrencyPlain(it.price * it.qty, currency)}
+                        <div className="text-right">
+                          <div className="text-[11px] text-ink-500">× {it.qty}</div>
+                          <div className="text-sm font-bold text-ink-900">
+                            {formatCurrencyPlain(it.price * it.qty, currency)}
+                          </div>
                         </div>
-                      </div>
-                    </li>
-                  ))}
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
               <div className="border-t border-ink-100 bg-ink-50/40 px-4 py-3 text-[11px] text-ink-500">
@@ -564,6 +580,106 @@ export function TransactionDetailsDrawer({
                 )}
               </ul>
             </div>
+
+            {/* Balance before / after */}
+            {(() => {
+              const evt = events.find(
+                (e) =>
+                  typeof e.balanceBefore === 'number' &&
+                  typeof e.balanceAfter === 'number',
+              )
+              if (!evt) return null
+              return (
+                <div className="rounded-2xl border border-ink-100 bg-white p-4 shadow-soft">
+                  <div className="text-sm font-bold text-ink-900">Balance change</div>
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                    <SummaryField
+                      label="Before"
+                      value={formatCurrencyPlain(evt.balanceBefore!, currency)}
+                    />
+                    <SummaryField
+                      label="After"
+                      value={formatCurrencyPlain(evt.balanceAfter!, currency)}
+                    />
+                    <SummaryField
+                      label="Delta"
+                      value={formatCurrencyPlain(
+                        evt.balanceAfter! - evt.balanceBefore!,
+                        currency,
+                      )}
+                    />
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Related deposits (card top-ups + reversals) */}
+            {ctx.card && (() => {
+              const cardDeposits = getCardDeposits(ctx.card.id)
+              if (cardDeposits.length === 0) return null
+              const matching = cardDeposits
+                .filter((d) => {
+                  // The deposit at/created within the same minute is treated
+                  // as related to this transaction. Also pull the matching
+                  // deposit id if the transaction is a result of a request
+                  // approval.
+                  return (
+                    Math.abs(
+                      new Date(d.at).getTime() - new Date(txn.createdAt).getTime(),
+                    ) < 60_000
+                  )
+                })
+                .slice(0, 3)
+              if (matching.length === 0) return null
+              return (
+                <div className="rounded-2xl border border-ink-100 bg-white p-4 shadow-soft">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-bold text-ink-900">Related deposits</div>
+                    <Link
+                      to={`/app/cards/${ctx.card.id}`}
+                      className="text-[11px] font-semibold text-ink-600 hover:text-ink-900"
+                    >
+                      View card
+                    </Link>
+                  </div>
+                  <ul className="mt-3 space-y-2 text-sm">
+                    {matching.map((d) => (
+                      <li
+                        key={d.id}
+                        className="flex items-center gap-2 rounded-xl border border-ink-100 bg-ink-50/40 p-2"
+                      >
+                        <div
+                          className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${
+                            d.amount < 0
+                              ? 'bg-rose-50 text-rose-700'
+                              : 'bg-emerald-50 text-emerald-700'
+                          }`}
+                        >
+                          <Wallet className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-semibold text-ink-900">
+                            {d.amount < 0 ? 'Reversal' : 'Top-up'} ·{' '}
+                            {paymentMethodLabel(d.method)}
+                          </div>
+                          <div className="truncate text-[11px] text-ink-500">
+                            {formatDateTime(d.at)}
+                            {d.reference ? ` · ${d.reference}` : ''}
+                          </div>
+                        </div>
+                        <div
+                          className={`text-right text-xs font-bold ${
+                            d.amount < 0 ? 'text-rose-600' : 'text-emerald-700'
+                          }`}
+                        >
+                          {formatCurrencyPlain(d.amount, currency)}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            })()}
 
             <div className="rounded-2xl border border-ink-100 bg-white p-4 shadow-soft">
               <div className="text-sm font-bold text-ink-900">Quick actions</div>

@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   CreditCard,
   Eye,
-  Filter,
   LayoutGrid,
   List,
   Mail,
@@ -23,6 +22,11 @@ import { ResponsiveTable, Field, FieldRow } from '../../components/ResponsiveTab
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { ToastViewport, useToast } from '../../components/Toast'
 import { Pagination } from '../../components/Pagination'
+import {
+  FilterBarSection,
+  FilterSearchInput,
+  FilterSelect,
+} from '../../components/FilterBar'
 import {
   createMember,
   getCards,
@@ -157,6 +161,7 @@ export default function UsersPage() {
   const [members, setMembers] = useState<Member[]>([])
   const [cards, setCards] = useState<MembershipCard[]>([])
   const [txns, setTxns] = useState<Transaction[]>([])
+  const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all')
   const [typeFilter, setTypeFilter] = useState<Member['type'] | 'all'>('all')
@@ -233,11 +238,34 @@ const [createOpen, setCreateOpen] = useState(false)
     const suspended = members.filter((m) => m.status === 'suspended').length
     const withCard = members.filter((m) => (cardsByMember.get(m.id)?.length ?? 0) > 0).length
     const totalBalance = Array.from(balanceByMember.values()).reduce((s, v) => s + v, 0)
-    return { total, active, inactive, suspended, withCard, totalBalance }
-  }, [members, cardsByMember, balanceByMember])
+    const weekMs = 7 * 24 * 60 * 60 * 1000
+    const now = Date.now()
+    const newThisWeek = members.filter(
+      (m) => now - new Date(m.joinedAt).getTime() <= weekMs,
+    ).length
+    const cardsOnFile = cards.length
+    return {
+      total,
+      active,
+      inactive,
+      suspended,
+      withCard,
+      totalBalance,
+      newThisWeek,
+      cardsOnFile,
+    }
+  }, [members, cards, cardsByMember, balanceByMember])
 
   const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
     return members.filter((m) => {
+      if (q) {
+        const hay = [m.name, m.email ?? '', m.phone ?? '', m.id]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+        if (!hay.includes(q)) return false
+      }
       if (statusFilter !== 'all' && m.status !== statusFilter) return false
       if (typeFilter !== 'all' && m.type !== typeFilter) return false
       if (tierFilter !== 'all' && (tierByMember.get(m.id) ?? 'Bronze') !== tierFilter) return false
@@ -254,11 +282,11 @@ const [createOpen, setCreateOpen] = useState(false)
       }
       return true
     })
-  }, [members, statusFilter, typeFilter, tierFilter, quickFilter, cardsByMember])
+  }, [members, search, statusFilter, typeFilter, tierFilter, quickFilter, cardsByMember])
 
   useEffect(() => {
     setPage(1)
-  }, [statusFilter, typeFilter, tierFilter, quickFilter, pageSize])
+  }, [search, statusFilter, typeFilter, tierFilter, quickFilter, pageSize])
 
 const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const safePage = Math.min(page, totalPages)
@@ -268,10 +296,58 @@ const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   }, [filtered, safePage, pageSize])
 
   function resetFilters() {
+    setSearch('')
     setStatusFilter('all')
     setTypeFilter('all')
     setTierFilter('all')
     setQuickFilter('all')
+    playCue('tap')
+  }
+
+  const activeFilterCount =
+    (search.trim() ? 1 : 0) +
+    (statusFilter !== 'all' ? 1 : 0) +
+    (typeFilter !== 'all' ? 1 : 0) +
+    (tierFilter !== 'all' ? 1 : 0) +
+    (quickFilter !== 'all' ? 1 : 0)
+
+  const typeOptions = useMemo(
+    () =>
+      TYPE_FILTERS.filter((t) => t.id !== 'all').map((t) => ({
+        value: t.id as string,
+        label: t.label,
+      })),
+    [],
+  )
+  const tierOptions = useMemo(
+    () =>
+      tiers
+        .filter((t) => t !== 'all')
+        .map((t) => ({ value: t, label: `${t} tier` })),
+    [tiers],
+  )
+  const statusOptions = useMemo(
+    () =>
+      STATUS_FILTERS.filter((s) => s.id !== 'all').map((s) => ({
+        value: s.id as string,
+        label: s.label,
+      })),
+    [],
+  )
+  const quickOptions = useMemo(
+    () =>
+      QUICK_FILTERS.filter((q) => q.id !== 'all').map((q) => ({
+        value: q.id as string,
+        label: q.label,
+      })),
+    [],
+  )
+
+  function setQuick(id: string) {
+    const next = id as QuickFilter
+    setQuickFilter(next)
+    if (next === 'suspended') setStatusFilter('suspended')
+    else setStatusFilter('all')
   }
 
 function notify(msg: string, tone: 'success' | 'info' | 'warning' = 'success') {
@@ -323,91 +399,123 @@ function notify(msg: string, tone: 'success' | 'info' | 'warning' = 'success') {
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard
-          variant="inline"
           label={`Total ${termPlural.toLowerCase()}`}
           value={String(stats.total)}
+          sub={
+            stats.newThisWeek > 0
+              ? `${stats.newThisWeek} new this week`
+              : `${stats.total} on file`
+          }
+          icon={UsersIcon}
+          tone="brand"
+          variant="top"
         />
         <StatCard
-          variant="inline"
           label="Active"
           value={String(stats.active)}
+          sub={
+            stats.active > 0
+              ? 'Can sign in and use the system'
+              : 'No active accounts'
+          }
+          icon={Play}
           tone="emerald"
+          variant="top"
         />
         <StatCard
-          variant="inline"
           label="Suspended"
           value={String(stats.suspended)}
-          tone="rose"
+          sub={
+            stats.suspended > 0
+              ? 'Needs attention'
+              : 'All clear'
+          }
+          icon={Pause}
+          tone={stats.suspended > 0 ? 'rose' : 'neutral'}
+          variant="top"
         />
         <StatCard
-          variant="inline"
           label="Outstanding balance"
-          value={`$${stats.totalBalance.toFixed(0)}`}
-          tone="brand"
+          value={`$${stats.totalBalance.toFixed(2)}`}
+          sub={`Across ${stats.cardsOnFile} card${stats.cardsOnFile === 1 ? '' : 's'}`}
+          icon={Wallet}
+          tone="indigo"
+          variant="top"
         />
       </div>
 
-      <div className="card p-4 sm:p-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-end">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1 rounded-pill border border-ink-200 bg-white p-1">
-              <Filter className="ml-2 h-3.5 w-3.5 text-ink-400" />
-              {QUICK_FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => {
-                    setQuickFilter(f.id)
-                    if (f.id === 'suspended') setStatusFilter('suspended')
-                    else setStatusFilter('all')
-                  }}
-                  className={
-                    quickFilter === f.id
-                      ? 'rounded-pill bg-ink-900 px-2.5 py-1 text-[11px] font-semibold text-white'
-                      : 'rounded-pill px-2.5 py-1 text-[11px] font-semibold text-ink-700 hover:bg-ink-50'
-                  }
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            <select
-              className="h-10 !w-40 shrink-0 rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as Member['type'] | 'all')}
-            >
-              {TYPE_FILTERS.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-            <select
-              className="h-10 !w-40 shrink-0 rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-              value={tierFilter}
-              onChange={(e) => setTierFilter(e.target.value)}
-            >
-              {tiers.map((t) => (
-                <option key={t} value={t}>
-                  {t === 'all' ? 'All tiers' : `${t} tier`}
-                </option>
-              ))}
-            </select>
-            <select
-              className="h-10 !w-36 shrink-0 rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-              aria-label="Status filter"
-            >
-              {STATUS_FILTERS.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </div>
+      <FilterBarSection activeCount={activeFilterCount} onClear={resetFilters}>
+        <FilterSearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder={`Search by name, email, phone…`}
+        />
+        <FilterSelect
+          label="Quick filter"
+          icon={<UserCog className="h-3.5 w-3.5" />}
+          options={quickOptions}
+          selected={quickFilter === 'all' ? [] : [quickFilter]}
+          onChange={(v) => v[0] && setQuick(v[0])}
+        />
+        <FilterSelect
+          label="Status"
+          icon={<ShieldOff className="h-3.5 w-3.5" />}
+          options={statusOptions}
+          selected={statusFilter === 'all' ? [] : [statusFilter]}
+          onChange={(v) => setStatusFilter((v[0] as StatusFilter) ?? 'all')}
+        />
+        <FilterSelect
+          label="Type"
+          icon={<UsersIcon className="h-3.5 w-3.5" />}
+          options={typeOptions}
+          selected={typeFilter === 'all' ? [] : [typeFilter]}
+          onChange={(v) =>
+            setTypeFilter((v[0] as Member['type'] | 'all') ?? 'all')
+          }
+        />
+        <FilterSelect
+          label="Tier"
+          icon={<Wallet className="h-3.5 w-3.5" />}
+          options={tierOptions}
+          selected={tierFilter === 'all' ? [] : [tierFilter]}
+          onChange={(v) => setTierFilter(v[0] ?? 'all')}
+        />
+        <div
+          role="tablist"
+          aria-label="View mode"
+          className="hidden sm:inline-flex items-center rounded-full border border-ink-200 bg-white p-0.5"
+        >
+          <button
+            role="tab"
+            aria-selected={viewMode === 'list'}
+            onClick={() => setViewMode('list')}
+            className={
+              viewMode === 'list'
+                ? 'inline-flex h-7 w-8 items-center justify-center rounded-full bg-ink-900 text-white'
+                : 'inline-flex h-7 w-8 items-center justify-center rounded-full text-ink-500 hover:bg-ink-50'
+            }
+            title="List view"
+          >
+            <List className="h-3.5 w-3.5" />
+          </button>
+          <button
+            role="tab"
+            aria-selected={viewMode === 'grid'}
+            onClick={() => setViewMode('grid')}
+            className={
+              viewMode === 'grid'
+                ? 'inline-flex h-7 w-8 items-center justify-center rounded-full bg-ink-900 text-white'
+                : 'inline-flex h-7 w-8 items-center justify-center rounded-full text-ink-500 hover:bg-ink-50'
+            }
+            title="Grid view"
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+          </button>
         </div>
+      </FilterBarSection>
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-500">
+      <div className="card p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-500">
           <div>
             Showing{' '}
             <span className="font-semibold text-ink-700">
@@ -417,51 +525,6 @@ function notify(msg: string, tone: 'success' | 'info' | 'warning' = 'success') {
             of <span className="font-semibold text-ink-700">{filtered.length}</span>{' '}
             {termPlural.toLowerCase()}
             {stats.withCard > 0 ? ` · ${stats.withCard} with cards` : ''}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {(statusFilter !== 'all' ||
-              typeFilter !== 'all' ||
-              tierFilter !== 'all' ||
-              quickFilter !== 'all') && (
-              <button
-                onClick={resetFilters}
-                className="text-xs font-semibold text-ink-700 hover:underline"
-              >
-                Reset filters
-              </button>
-            )}
-            <div
-              role="tablist"
-              aria-label="View mode"
-              className="hidden sm:inline-flex items-center rounded-pill border border-ink-200 bg-white p-0.5"
-            >
-              <button
-                role="tab"
-                aria-selected={viewMode === 'list'}
-                onClick={() => setViewMode('list')}
-                className={
-                  viewMode === 'list'
-                    ? 'inline-flex h-7 w-8 items-center justify-center rounded-pill bg-ink-900 text-white'
-                    : 'inline-flex h-7 w-8 items-center justify-center rounded-pill text-ink-500 hover:bg-ink-50'
-                }
-                title="List view"
-              >
-                <List className="h-3.5 w-3.5" />
-              </button>
-              <button
-                role="tab"
-                aria-selected={viewMode === 'grid'}
-                onClick={() => setViewMode('grid')}
-                className={
-                  viewMode === 'grid'
-                    ? 'inline-flex h-7 w-8 items-center justify-center rounded-pill bg-ink-900 text-white'
-                    : 'inline-flex h-7 w-8 items-center justify-center rounded-pill text-ink-500 hover:bg-ink-50'
-                }
-                title="Grid view"
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-              </button>
-            </div>
           </div>
         </div>
 

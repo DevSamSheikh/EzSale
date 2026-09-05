@@ -23,6 +23,7 @@ import { useActiveLocation } from '../active-location'
 import { isLocationOpenNow } from '../location-utils'
 import { playCue } from '../audio'
 import type { Location, Operator } from '../types'
+import { useIsMultiLocation } from '../hooks/useIsMultiLocation'
 
 const DEMO_BUSINESSES = [
   { id: 'b1', name: 'Bistro Aurora', type: 'restaurant' as const },
@@ -44,6 +45,7 @@ export function ContextSwitcher() {
   const auth = getAuth()
   const activeLocation = useActiveLocation()
   const me = getCurrentOperator()
+  const multi = useIsMultiLocation()
 
   const [open, setOpen] = useState(false)
   const [activeSection, setActiveSection] = useState<Section | null>(null)
@@ -130,9 +132,19 @@ export function ContextSwitcher() {
 
       {open && (
         <div
-          className="absolute left-0 top-full z-40 mt-2 flex w-[680px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-pop"
+          className="absolute left-0 top-full z-40 mt-2 flex w-[680px] max-w-[calc(100vw-1.5rem)] rounded-2xl border border-ink-100 bg-white shadow-pop"
           role="dialog"
           aria-label="Workspace context"
+          onMouseLeave={(e) => {
+            // Only close when the cursor leaves the *entire* dialog. We use
+            // a small timeout + relatedTarget check so the dropdown stays
+            // open while moving between the trigger button and the panel.
+            const next = e.relatedTarget as Node | null
+            if (wrapRef.current && next && wrapRef.current.contains(next)) return
+            if (buttonRef.current && next && buttonRef.current.contains(next)) return
+            setOpen(false)
+            setActiveSection(null)
+          }}
         >
           <ContextSidebar
             active={activeSection}
@@ -141,8 +153,17 @@ export function ContextSwitcher() {
             locationLabel={locationName}
             operatorLabel={operatorName}
             roleLabel={role?.name ?? 'Operator'}
+            multi={multi}
           />
-          <div className="w-[420px] max-w-full border-l border-ink-100">
+          <div
+            className="w-[420px] max-w-full overflow-hidden rounded-r-2xl border-l border-ink-100"
+            onMouseEnter={() => {
+              // If the user moves directly into the right panel without
+              // hovering a sidebar item first, keep the last active section
+              // so the panel doesn't collapse.
+              if (!activeSection) setActiveSection('business')
+            }}
+          >
             {activeSection === 'business' && (
               <BusinessSection
                 currentName={businessName}
@@ -211,11 +232,11 @@ function ContextSidebar({
   locationLabel: string
   operatorLabel: string
   roleLabel: string
+  multi: boolean
 }) {
   return (
     <nav
-      className="w-[260px] shrink-0 bg-ink-50/60 p-2"
-      onMouseLeave={() => onHover(null)}
+      className="w-[260px] shrink-0 rounded-l-2xl bg-ink-50/60 p-2"
       aria-label="Context switcher"
     >
       <div className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-ink-400">
@@ -230,14 +251,16 @@ function ContextSidebar({
         active={active === 'business'}
         onHover={onHover}
       />
-      <ContextItem
-        id="location"
-        icon={MapPin}
-        label="Location"
-        value={locationLabel}
-        active={active === 'location'}
-        onHover={onHover}
-      />
+      {multi && (
+        <ContextItem
+          id="location"
+          icon={MapPin}
+          label="Location"
+          value={locationLabel}
+          active={active === 'location'}
+          onHover={onHover}
+        />
+      )}
       <ContextItem
         id="operator"
         icon={UserCog}

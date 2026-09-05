@@ -292,7 +292,7 @@ export const PERMISSION_TO_NAV: Record<string, string> = {
   'orders.view': '/app/orders',
   'users.view': '/app/users',
   'cards.view': '/app/cards',
-  'deposits.view': '/app/deposits',
+  'deposits.view': '/app/deposit-requests',
   'depositRequests.view': '/app/deposit-requests',
   'transactions.view': '/app/transactions',
   'reports.view': '/app/reports',

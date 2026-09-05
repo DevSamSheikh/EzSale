@@ -53,6 +53,13 @@ export interface ResponsiveTableProps<Row> {
   theadExtra?: ReactNode
   /** Empty state when rows is empty. */
   empty?: ReactNode
+  /**
+   * Optional row click handler. When provided, desktop rows get a hover
+   * background and the entire row becomes a clickable surface (excluding
+   * any interactive controls inside the cells). On mobile, the card
+   * body is similarly clickable.
+   */
+  onRowClick?: (row: Row, index: number) => void
 }
 
 export function ResponsiveTable<Row>({
@@ -68,6 +75,7 @@ export function ResponsiveTable<Row>({
   minWidth,
   theadExtra,
   empty,
+  onRowClick,
 }: ResponsiveTableProps<Row>) {
   if (rows.length === 0 && empty) {
     return <div className={className}>{empty}</div>
@@ -100,7 +108,11 @@ export function ResponsiveTable<Row>({
             </thead>
             <tbody className="divide-y divide-ink-100">
               {rows.map((r, i) => (
-                <tr key={rowKey(r, i)} className="text-ink-800">
+                <tr
+                  key={rowKey(r, i)}
+                  className={`text-ink-800 ${onRowClick ? 'cursor-pointer transition-colors hover:bg-ink-50/60' : ''}`}
+                  onClick={onRowClick ? () => onRowClick(r, i) : undefined}
+                >
                   {renderRow(r, i)}
                 </tr>
               ))}
@@ -128,7 +140,11 @@ export function ResponsiveTable<Row>({
             </thead>
             <tbody className="divide-y divide-ink-100">
               {rows.map((r, i) => (
-                <tr key={rowKey(r, i)} className="text-ink-800">
+                <tr
+                  key={rowKey(r, i)}
+                  className={`text-ink-800 ${onRowClick ? 'cursor-pointer transition-colors hover:bg-ink-50/60' : ''}`}
+                  onClick={onRowClick ? () => onRowClick(r, i) : undefined}
+                >
                   {renderRow(r, i)}
                 </tr>
               ))}
@@ -144,7 +160,22 @@ export function ResponsiveTable<Row>({
           {rows.map((r, i) => (
             <div
               key={rowKey(r, i)}
-              className="rounded-2xl border border-ink-100 bg-white p-4 shadow-soft"
+              className={`rounded-2xl border border-ink-100 bg-white p-4 shadow-soft ${
+                onRowClick ? 'cursor-pointer transition-colors hover:bg-ink-50/40' : ''
+              }`}
+              onClick={onRowClick ? () => onRowClick(r, i) : undefined}
+              role={onRowClick ? 'button' : undefined}
+              tabIndex={onRowClick ? 0 : undefined}
+              onKeyDown={
+                onRowClick
+                  ? (e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        onRowClick(r, i)
+                      }
+                    }
+                  : undefined
+              }
             >
               {renderCard(r, i)}
             </div>

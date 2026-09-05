@@ -8,6 +8,9 @@ import type {
   OperatingHours,
   OperatorPermissions,
   POSTerminal,
+  ReturnLine,
+  ReturnRecord,
+  ReturnScope,
   Transaction,
   TransactionStatus,
 } from './types'
@@ -17,7 +20,11 @@ import {
   getTransactions,
   setTransactionStatus as setTxnStatus,
 } from './payment-store'
-import { getCards, getCard, getMember } from './card-store'
+import { getCards, getCard, getMember, updateCard } from './card-store'
+import {
+  getProducts,
+  PRODUCTS_UPDATED_EVENT,
+} from './pos-store'
 import { logActivity as recordActivity, notify as fireNotification } from './notifications-store'
 
 const KEY_LOCATIONS = 'ezsale:locations'
@@ -647,7 +654,312 @@ export function remainingRefundable(txnId: string): number {
   if (t.status === 'refunded') return 0
   const events = getFinancialEvents(txnId)
   const refunded = events
-    .filter((e) => e.type === 'refund' || e.type === 'partial_refund')
+    .filter((e) => e.type === 'refund' || e.type === 'partial_refund' || e.type === 'return')
     .reduce((s, e) => s + Math.abs(e.amount), 0)
   return Math.max(0, t.total - refunded)
+}
+
+// ---- Returns / Refunds ---------------------------------------------------
+//
+// Returns are tracked separately from `FinancialEvent` so we can record
+// per-line quantities, restock products/variants, and prevent
+// double-refunding the same line. The store is keyed by parent order id.
+
+const KEY_RETURNS = 'ezsale:order-returns'
+
+function loadReturns(): ReturnRecord[] {
+  if (typeof window === 'undefined') return []
+  return safeParse<ReturnRecord[]>(localStorage.getItem(KEY_RETURNS), [])
+}
+
+function persistReturns(list: ReturnRecord[]) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(KEY_RETURNS, JSON.stringify(list))
+}
+
+export function getReturns(orderId?: string): ReturnRecord[] {
+  const all = loadReturns()
+  const filtered = orderId ? all.filter((r) => r.orderId === orderId) : all
+  return filtered.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+}
+
+export function getReturn(id: string): ReturnRecord | null {
+  return loadReturns().find((r) => r.id === id) ?? null
+}
+
+/**
+ * Returns the total quantity already returned for a specific line on a
+ * given order. Used by the return wizard to enforce "can't return more
+ * than was originally sold minus previous returns".
+ */
+export function getReturnedQty(
+  orderId: string,
+  productId: string,
+  variantId?: string,
+): number {
+  return loadReturns()
+    .filter((r) => r.orderId === orderId)
+    .flatMap((r) => r.lines)
+    .filter(
+      (l) =>
+        l.productId === productId &&
+        (l.variantId ?? '') === (variantId ?? ''),
+    )
+    .reduce((s, l) => s + l.qty, 0)
+}
+
+/**
+ * Returns the total refund amount already processed for an order. Used
+ * to compute the remaining refundable amount and to update the parent
+ * transaction status (refunded vs partially_refunded).
+ */
+export function getReturnedAmount(orderId: string): number {
+  return loadReturns()
+    .filter((r) => r.orderId === orderId)
+    .reduce((s, r) => s + r.amount, 0)
+}
+
+export interface CreateReturnInput {
+  orderId: string
+  scope: ReturnScope
+  /** Item-scoped lines; ignored when scope === 'full'. */
+  lines?: ReturnLine[]
+  reason: string
+  /** When true, refund the membership card balance. Default true when
+   * the order was paid via the membership method. */
+  restoreToCard?: boolean
+  by?: string
+}
+
+export interface CreateReturnResult {
+  returnRecord: ReturnRecord
+  childTxn: Transaction
+  parent: Transaction
+  cardBalanceBefore?: number
+  cardBalanceAfter?: number
+}
+
+/**
+ * Increase stock for a product or a specific variant. Mirrors
+ * `pos-store.availableStock` semantics — `undefined` stock is unlimited
+ * and is a no-op (we never increment an `undefined` field because there
+ * is no numeric bucket to add to).
+ */
+function restockProduct(
+  productId: string,
+  qty: number,
+  variantId?: string,
+) {
+  if (qty <= 0) return
+  const all = getProducts()
+  const idx = all.findIndex((p) => p.id === productId)
+  if (idx < 0) return
+  const current = all[idx]
+  if (variantId) {
+    const vIdx = current.variants.findIndex((v) => v.id === variantId)
+    if (vIdx < 0) return
+    const v = current.variants[vIdx]
+    if (v.stock === undefined) return
+    const nextVariants = [...current.variants]
+    nextVariants[vIdx] = { ...v, stock: v.stock + qty }
+    all[idx] = {
+      ...current,
+      variants: nextVariants,
+      updatedAt: new Date().toISOString(),
+    }
+  } else {
+    if (current.stock === undefined) return
+    all[idx] = {
+      ...current,
+      stock: current.stock + qty,
+      updatedAt: new Date().toISOString(),
+    }
+  }
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('ezsale:pos:products', JSON.stringify(all))
+    window.dispatchEvent(new CustomEvent(PRODUCTS_UPDATED_EVENT))
+  }
+}
+
+/**
+ * Process a return against an existing order. Validates the order isn't
+ * already fully refunded, validates the requested qty per line against
+ * the remaining returnable qty, restocks products, refunds the
+ * membership card (if applicable), creates a child refund transaction,
+ * logs a financial event, persists a `ReturnRecord`, and updates the
+ * parent status.
+ */
+export function createReturn(input: CreateReturnInput): CreateReturnResult | null {
+  const allTxns = getTransactions()
+  const parent = allTxns.find((t) => t.id === input.orderId)
+  if (!parent) return null
+  if (parent.status === 'refunded') return null
+
+  const by = input.by ?? 'admin@ezsale.app'
+  const reason = input.reason.trim() || 'No reason provided'
+
+  // Build the list of return lines.
+  let lines: ReturnLine[]
+  if (input.scope === 'full') {
+    lines = parent.items.map((it) => {
+      const lineGross = it.price * it.qty - (it.lineDiscount ?? 0)
+      const unitPrice = it.qty > 0 ? lineGross / it.qty : it.price
+      return {
+        productId: it.productId,
+        variantId: it.variantId,
+        productName: it.name,
+        variantName: it.variantName,
+        qty: it.qty,
+        unitPrice: Math.round(unitPrice * 100) / 100,
+        amount: Math.round(lineGross * 100) / 100,
+      }
+    })
+  } else {
+    if (!input.lines || input.lines.length === 0) return null
+    // Validate every line against the original order and the remaining
+    // returnable qty. Surface a clear error to the caller.
+    for (const rl of input.lines) {
+      const original = parent.items.find(
+        (it) =>
+          it.productId === rl.productId &&
+          (it.variantId ?? '') === (rl.variantId ?? ''),
+      )
+      if (!original) return null
+      const already = getReturnedQty(parent.id, rl.productId, rl.variantId)
+      if (rl.qty <= 0 || already + rl.qty > original.qty) return null
+    }
+    lines = input.lines
+  }
+
+  const amount = lines.reduce((s, l) => s + l.amount, 0)
+  if (amount <= 0) return null
+
+  // Reverse the membership card balance if requested (or implicit when
+  // the order was paid via the membership method).
+  const wantsCardReverse =
+    input.restoreToCard ?? parent.method === 'membership'
+  let cardBalanceBefore: number | undefined
+  let cardBalanceAfter: number | undefined
+  if (parent.cardId && wantsCardReverse) {
+    const card = getCard(parent.cardId)
+    if (card) {
+      cardBalanceBefore = card.balance
+      const nextBalance = Math.round((card.balance + amount) * 100) / 100
+      updateCard(card.id, { balance: nextBalance })
+      cardBalanceAfter = nextBalance
+    }
+  }
+
+  // Restock returned items. Unlimited-stock items are skipped.
+  for (const l of lines) {
+    restockProduct(l.productId, l.qty, l.variantId)
+  }
+
+  // Create the child refund transaction (negative totals).
+  const child = createTxn({
+    businessId: parent.businessId,
+    operatorEmail: by,
+    memberId: parent.memberId,
+    cardId: parent.cardId,
+    items: lines.map((l) => ({
+      productId: l.productId,
+      name: l.productName,
+      price: l.unitPrice,
+      qty: l.qty,
+      variantId: l.variantId,
+      variantName: l.variantName,
+    })),
+    subtotal: -amount,
+    discount: 0,
+    tax: 0,
+    total: -amount,
+    method: parent.method,
+    cardNumber: parent.cardNumber,
+    reference: parent.reference,
+    status: 'completed',
+    locationId: parent.locationId,
+    note: reason,
+  })
+
+  // Financial event for the audit trail.
+  const event = logFinancialEvent(parent.id, 'return', -amount, {
+    reason,
+    balanceBefore: cardBalanceBefore,
+    balanceAfter: cardBalanceAfter,
+    by,
+  })
+
+  // Persist the return record.
+  const record: ReturnRecord = {
+    id: uid('ret'),
+    businessId: parent.businessId,
+    orderId: parent.id,
+    scope: input.scope,
+    amount,
+    reason,
+    restoredToCard: cardBalanceAfter !== undefined,
+    cardBalanceBefore,
+    cardBalanceAfter,
+    lines,
+    refundTxnId: child.id,
+    by,
+    createdAt: new Date().toISOString(),
+  }
+  const all = loadReturns()
+  all.unshift(record)
+  persistReturns(all)
+
+  // Recompute the parent status.
+  const newReturned = getReturnedAmount(parent.id) + amount
+  const isFull = newReturned >= parent.total - 0.0001
+  const nextStatus: TransactionStatus = isFull ? 'refunded' : 'partially_refunded'
+  setTxnStatus(parent.id, nextStatus)
+
+  // Notify admin + member.
+  try {
+    const member = parent.memberId ? getMember(parent.memberId) : null
+    const verb = input.scope === 'full' ? 'Returned' : 'Partial return'
+    fireNotification({
+      audience: 'admin',
+      category: 'refund',
+      severity: isFull ? 'info' : 'warning',
+      title: isFull ? 'Order fully returned' : 'Items returned',
+      body: `${parent.id} · ${member?.name ?? 'Order'} · ${formatRefundAmount(amount)}${reason ? ` — ${reason}` : ''}`,
+      href: '/app/orders',
+      transactionId: parent.id,
+      memberId: parent.memberId,
+    })
+    if (parent.memberId) {
+      fireNotification({
+        audience: 'member',
+        memberId: parent.memberId,
+        category: 'transaction',
+        severity: 'info',
+        title: isFull ? 'Your order was returned' : 'Items were returned',
+        body: `${formatRefundAmount(amount)} was refunded on order ${parent.id}.${reason ? ` Reason: ${reason}` : ''}`,
+        transactionId: parent.id,
+      })
+    }
+    recordActivity({
+      category: 'refund',
+      severity: isFull ? 'warning' : 'info',
+      title: verb,
+      body: `${parent.id} · ${member?.name ?? 'Order'} · ${formatRefundAmount(amount)}${reason ? ` — ${reason}` : ''}`,
+      transactionId: parent.id,
+      memberId: parent.memberId,
+    })
+  } catch {
+    /* best-effort */
+  }
+
+  return {
+    returnRecord: record,
+    childTxn: child,
+    parent: { ...parent, status: nextStatus },
+    cardBalanceBefore,
+    cardBalanceAfter,
+  }
+  // `event` is intentionally retained in the audit log; TypeScript
+  // eslint understands the unused-var suppression below.
+  void event
 }

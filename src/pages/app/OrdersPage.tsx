@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Banknote,
   Calendar,
@@ -18,6 +18,7 @@ import { PageHeader, EmptyState, StatCard } from '../../components/Primitives'
 import { ResponsiveTable, Field, FieldRow } from '../../components/ResponsiveTable'
 import { OrderDetailsDrawer } from '../../components/OrderDetailsDrawer'
 import {
+  FilterBarSection,
   FilterDateRange,
   FilterSearchInput,
   FilterSelect,
@@ -52,6 +53,7 @@ import type {
   TransactionStatus,
 } from '../../types'
 import { playCue } from '../../audio'
+import { useIsMultiLocation } from '../../hooks/useIsMultiLocation'
 
 const STATUSES: { value: TransactionStatus; label: string }[] = [
   { value: 'completed', label: 'Completed' },
@@ -72,6 +74,8 @@ export default function OrdersPage() {
   const [drawerCards, setDrawerCards] = useState<MembershipCard[]>([])
   const [drawerLocations, setDrawerLocations] = useState<Location[]>([])
   const [page, setPage] = useState({ page: 1, pageSize: 10 })
+  const [searchParams, setSearchParams] = useSearchParams()
+  const multi = useIsMultiLocation()
 
   useEffect(() => {
     function onFocus() {
@@ -80,6 +84,26 @@ export default function OrdersPage() {
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [])
+
+  // If `?focus=ID` is set (deep link from a child record or the return
+  // wizard's "View order" button), auto-open that order in the drawer.
+  useEffect(() => {
+    const focusId = searchParams.get('focus')
+    if (!focusId) return
+    const t = getTransactions().find((x) => x.id === focusId)
+    if (t) {
+      setSelectedTxn(t)
+      playCue('tap')
+    }
+    setSearchParams(
+      (p) => {
+        const next = new URLSearchParams(p)
+        next.delete('focus')
+        return next
+      },
+      { replace: true },
+    )
+  }, [searchParams, setSearchParams])
 
   const data = useMemo(() => {
     const transactions = getTransactions()
@@ -188,6 +212,12 @@ export default function OrdersPage() {
             >
               <Download className="h-4 w-4" /> Export CSV
             </button>
+            <Link
+              to="/app/orders/return"
+              className="inline-flex items-center gap-2 rounded-pill border border-ink-200 bg-white px-4 py-2.5 text-sm font-semibold text-ink-800 transition-colors hover:bg-ink-50"
+            >
+              <RotateCcw className="h-4 w-4" /> Add return
+            </Link>
             <Link to="/app/pos" className="btn-primary">
               <ShoppingBag className="h-4 w-4" /> New order
             </Link>
@@ -245,41 +275,41 @@ export default function OrdersPage() {
       </div>
 
       {/* Filter bar */}
-      <div className="card mb-4 p-4 sm:p-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <FilterSearchInput
-            value={filters.search}
-            onChange={(v) => setFilters((f) => ({ ...f, search: v }))}
-            placeholder="Search order ID, operator, card, or item…"
-          />
-          <FilterDateRange
-            from={filters.dateFrom}
-            to={filters.dateTo}
-            onChange={(next) =>
-              setFilters((f) => ({ ...f, dateFrom: next.from, dateTo: next.to }))
-            }
-          />
-          <FilterSelect
-            label="Status"
-            icon={<Filter className="h-3.5 w-3.5" />}
-            options={statusOptions}
-            selected={filters.statuses}
-            onChange={(v) => setFilters((f) => ({ ...f, statuses: v }))}
-          />
-          <FilterSelect
-            label="Payment method"
-            icon={<CreditCard className="h-3.5 w-3.5" />}
-            options={methodOptions}
-            selected={filters.methods}
-            onChange={(v) => setFilters((f) => ({ ...f, methods: v }))}
-          />
-          <FilterSelect
-            label="Customer"
-            icon={<UserIcon className="h-3.5 w-3.5" />}
-            options={memberOptions}
-            selected={filters.memberIds}
-            onChange={(v) => setFilters((f) => ({ ...f, memberIds: v }))}
-          />
+      <FilterBarSection activeCount={filterCount} onClear={clearAll}>
+        <FilterSearchInput
+          value={filters.search}
+          onChange={(v) => setFilters((f) => ({ ...f, search: v }))}
+          placeholder="Search order ID, operator, card, or item…"
+        />
+        <FilterDateRange
+          from={filters.dateFrom}
+          to={filters.dateTo}
+          onChange={(next) =>
+            setFilters((f) => ({ ...f, dateFrom: next.from, dateTo: next.to }))
+          }
+        />
+        <FilterSelect
+          label="Status"
+          icon={<Filter className="h-3.5 w-3.5" />}
+          options={statusOptions}
+          selected={filters.statuses}
+          onChange={(v) => setFilters((f) => ({ ...f, statuses: v }))}
+        />
+        <FilterSelect
+          label="Payment method"
+          icon={<CreditCard className="h-3.5 w-3.5" />}
+          options={methodOptions}
+          selected={filters.methods}
+          onChange={(v) => setFilters((f) => ({ ...f, methods: v }))}
+        />
+        <FilterSelect
+          label="Customer"
+          icon={<UserIcon className="h-3.5 w-3.5" />}
+          options={memberOptions}
+          selected={filters.memberIds}
+          onChange={(v) => setFilters((f) => ({ ...f, memberIds: v }))}
+        />
+        {multi && (
           <FilterSelect
             label="Location"
             icon={<MapPin className="h-3.5 w-3.5" />}
@@ -287,23 +317,15 @@ export default function OrdersPage() {
             selected={filters.locationIds}
             onChange={(v) => setFilters((f) => ({ ...f, locationIds: v }))}
           />
-          {hasFilters && (
-            <button
-              type="button"
-              onClick={clearAll}
-              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-ink-200 bg-white px-3 text-xs font-semibold text-ink-700 hover:bg-ink-50"
-            >
-              <X className="h-3 w-3" /> Clear ({filterCount})
-            </button>
-          )}
-        </div>
-      </div>
+        )}
+      </FilterBarSection>
 
       <OrdersTable
         transactions={filtered}
         members={data.members}
         cards={data.cards}
         locations={data.locations}
+        showLocation={multi}
         onSelect={(t) => {
           setSelectedTxn(t)
           playCue('tap')
@@ -334,6 +356,7 @@ function OrdersTable({
   members,
   cards,
   locations,
+  showLocation,
   onSelect,
   page,
   pageSize,
@@ -347,6 +370,7 @@ function OrdersTable({
   page: number
   pageSize: number
   onPageChange: (next: { page: number; pageSize: number }) => void
+  showLocation: boolean
 }) {
   if (transactions.length === 0) {
     return (
@@ -366,7 +390,7 @@ function OrdersTable({
     { label: 'Order', className: 'w-[150px]' },
     { label: 'Customer' },
     { label: 'Operator', className: 'w-[170px]' },
-    { label: 'Location', className: 'w-[140px]' },
+    ...(showLocation ? [{ label: 'Location', className: 'w-[140px]' }] : []),
     { label: 'Items', className: 'w-[68px] text-center' },
     { label: 'Total', className: 'w-[110px] text-right' },
     { label: 'Payment', className: 'w-[140px]' },
@@ -420,22 +444,24 @@ function OrdersTable({
           </div>
           <div className="truncate text-[11px] text-ink-500">{t.operatorEmail}</div>
         </td>
-        <td className="px-4 py-3.5 align-top">
-          {location ? (
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold leading-tight text-ink-900">
-                {location.name}
+        {showLocation && (
+          <td className="px-4 py-3.5 align-top">
+            {location ? (
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold leading-tight text-ink-900">
+                  {location.name}
+                </div>
+                <div className="truncate text-[11px] text-ink-500">
+                  <span className="font-mono">{location.code}</span>
+                </div>
               </div>
-              <div className="truncate text-[11px] text-ink-500">
-                <span className="font-mono">{location.code}</span>
-              </div>
-            </div>
-          ) : (
-            <span className="inline-flex items-center gap-1 text-[11px] text-ink-500">
-              <MapPin className="h-3 w-3" /> Unknown
-            </span>
-          )}
-        </td>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[11px] text-ink-500">
+                <MapPin className="h-3 w-3" /> Unknown
+              </span>
+            )}
+          </td>
+        )}
         <td className="px-4 py-3.5 align-top text-center">
           <Tooltip
             content={
@@ -448,7 +474,14 @@ function OrdersTable({
                       <span className="grid h-4 w-4 place-items-center rounded-full bg-ink-100 text-[10px] font-bold text-ink-700">
                         {it.qty}
                       </span>
-                      <span className="truncate">{it.name}</span>
+                      <span className="truncate">
+                        {it.name}
+                        {it.variantName && (
+                          <span className="ml-1 text-[10px] font-semibold text-brand-700">
+                            · {it.variantName}
+                          </span>
+                        )}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -573,9 +606,11 @@ function OrdersTable({
             )}
           </Field>
           <Field label="Operator">{operatorName(t.operatorEmail)}</Field>
-          <Field label="Location">
-            {location ? location.name : 'Unknown'}
-          </Field>
+          {showLocation && (
+            <Field label="Location">
+              {location ? location.name : 'Unknown'}
+            </Field>
+          )}
           {card && (
             <Field label="Card">
               <span className="font-mono text-xs">{card.cardNumber}</span>
@@ -607,6 +642,7 @@ function OrdersTable({
             description="Try clearing the search or expanding the date range."
           />
         }
+        onRowClick={onSelect}
       />
       <Pagination
         page={safePage}

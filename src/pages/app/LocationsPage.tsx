@@ -51,6 +51,7 @@ import {
 import { getOperators } from '../../operators-store'
 import { getTransactions, paymentMethodLabel } from '../../payment-store'
 import { getBusiness } from '../../store'
+import { useIsMultiLocation } from '../../hooks/useIsMultiLocation'
 import { playCue } from '../../audio'
 import type {
   Location,
@@ -168,6 +169,40 @@ export default function LocationsPage() {
     flash('Location removed.')
     playCue('warning')
     setDeleteConfirm(null)
+  }
+
+  // In single-location mode the locations management screen is intentionally
+  // hidden — render a clear notice explaining why so the operator can
+  // either go back or flip the multi-location toggle on in Settings.
+  const multi = useIsMultiLocation()
+  if (!multi) {
+    return (
+      <div>
+        <PageHeader
+          title="Locations"
+          subtitle="Multi-location management is currently disabled."
+        />
+        <div className="card grid place-items-center px-6 py-16 text-center">
+          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-ink-50 text-ink-500">
+            <MapPin className="h-5 w-5" />
+          </div>
+          <h3 className="mt-3 text-base font-bold text-ink-900">Multi-location is off</h3>
+          <p className="mt-1 max-w-md text-sm text-ink-500">
+            This business is running in single-location mode, so the locations
+            management screen is hidden. Open Settings → Locations and enable
+            multi-location to add or update stores, kiosks, and terminals.
+          </p>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            <Link to="/app/settings" className="btn-primary">
+              Open Settings
+            </Link>
+            <Link to="/app/dashboard" className="btn-secondary">
+              Back to dashboard
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

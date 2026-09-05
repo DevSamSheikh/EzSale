@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
   Check,
   CheckCircle2,
@@ -16,46 +15,77 @@ import {
   List,
   Loader2,
   Paperclip,
+  Plus,
   RefreshCw,
-  Search,
+  RotateCcw,
   ShieldOff,
   Sparkles,
+  Undo2,
   Wallet,
   X,
 } from 'lucide-react'
-import { PageHeader, StatCard, type StatTone } from '../../components/Primitives'
+import { PageHeader, StatCard } from '../../components/Primitives'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { ToastViewport, useToast } from '../../components/Toast'
+import {
+  FilterBarSection,
+  FilterDateRange,
+  FilterSearchInput,
+  FilterSelect,
+} from '../../components/FilterBar'
 import {
   approveDepositRequest,
   cancelDepositRequest,
   depositRequestStatusLabel,
   depositRequestStatusTone,
   getCard,
+  getCards,
   getDepositRequests,
   getMember,
+  getMembers,
   maskCardNumber,
+  recordDeposit,
   rejectDepositRequest,
+  reopenRejectedDepositRequest,
+  revertApprovedDepositRequest,
   type ApproveDepositRequestResult,
+  type RecordDepositResult,
+  type RevertDepositRequestResult,
 } from '../../card-store'
 import { paymentMethodLabel } from '../../payment-store'
 import type {
   DepositRequest,
   DepositRequestStatus,
+  PaymentMethod,
 } from '../../types'
 import { playCue } from '../../audio'
+
+const STATUSES: { value: DepositRequestStatus; label: string }[] = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'cancelled', label: 'Cancelled' },
+]
+
+const METHODS: PaymentMethod[] = ['cash', 'card', 'bank', 'wallet', 'membership']
 
 type StatusFilter = DepositRequestStatus | 'all'
 type ViewMode = 'list' | 'grid'
 type PageSize = 8 | 16 | 32
 
-const QUICK_TABS: { id: StatusFilter; label: string }[] = [
-  { id: 'pending', label: 'Pending' },
-  { id: 'all', label: 'All' },
-  { id: 'approved', label: 'Approved' },
-  { id: 'rejected', label: 'Rejected' },
-  { id: 'cancelled', label: 'Cancelled' },
-]
+function withinRange(iso: string, from: string, to: string) {
+  const t = new Date(iso).getTime()
+  if (from) {
+    const f = new Date(from + 'T00:00:00').getTime()
+    if (t < f) return false
+  }
+  if (to) {
+    const e = new Date(to + 'T23:59:59.999').getTime()
+    if (t > e) return false
+  }
+  return true
+}
 
 function currency(n: number) {
   return `$${n.toFixed(2)}`
@@ -110,6 +140,9 @@ export default function DepositRequestsPage() {
   const [requests, setRequests] = useState<DepositRequest[]>([])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending')
+  const [methods, setMethods] = useState<string[]>([])
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<PageSize>(16)
@@ -122,6 +155,10 @@ export default function DepositRequestsPage() {
   const [cancelConfirm, setCancelConfirm] = useState<DepositRequest | null>(null)
   const [approvalResult, setApprovalResult] =
     useState<ApproveDepositRequestResult | null>(null)
+  const [revertConfirm, setRevertConfirm] = useState<DepositRequest | null>(null)
+  const [reopening, setReopening] = useState(false)
+  const [recordingOpen, setRecordingOpen] = useState(false)
+  const [recordedResult, setRecordedResult] = useState<RecordDepositResult | null>(null)
 
   useEffect(() => {
     refresh()
@@ -163,6 +200,8 @@ export default function DepositRequestsPage() {
       } else if (statusFilter !== 'all' && r.status !== statusFilter) {
         return false
       }
+      if (methods.length && !methods.includes(r.method)) return false
+      if (!withinRange(r.requestedAt, dateFrom, dateTo)) return false
       if (q) {
         const card = getCard(r.cardId)
         const member = getMember(r.memberId)
@@ -184,11 +223,11 @@ export default function DepositRequestsPage() {
       }
       return true
     })
-  }, [requests, search, statusFilter])
+  }, [requests, search, statusFilter, methods, dateFrom, dateTo])
 
   useEffect(() => {
     setPage(1)
-  }, [search, statusFilter, pageSize])
+  }, [search, statusFilter, methods, dateFrom, dateTo, pageSize])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const safePage = Math.min(page, totalPages)
@@ -277,17 +316,104 @@ export default function DepositRequestsPage() {
     setCancelConfirm(null)
   }
 
+  function promptRevertApproved(req: DepositRequest) {
+    setRevertConfirm(req)
+  }
+
+  function commitRevertApproved() {
+    if (!revertConfirm) return
+    const result: RevertDepositRequestResult | null = revertApprovedDepositRequest(
+      revertConfirm.id,
+    )
+    if (!result) {
+      setError(
+        'Unable to revert — the card balance is below the original deposit amount. Adjust the underlying transactions first.',
+      )
+      setRevertConfirm(null)
+      playCue('warning')
+      return
+    }
+    refresh()
+    setRevertConfirm(null)
+    if (reviewing && reviewing.id === result.request.id) {
+      setReviewing(result.request)
+    }
+    notify(
+      `Approval reverted. ${currency(result.request.amount)} debited from the card.`,
+      'warning',
+    )
+    playCue('info')
+  }
+
+  function handleReopen(req: DepositRequest) {
+    setReopening(true)
+    try {
+      const updated = reopenRejectedDepositRequest(req.id)
+      if (!updated) {
+        setError('Unable to reopen this request.')
+        playCue('warning')
+        return
+      }
+      refresh()
+      if (reviewing && reviewing.id === updated.id) {
+        setReviewing(updated)
+      }
+      notify('Request reopened. It is back in the pending queue.', 'info')
+      playCue('info')
+    } finally {
+      setReopening(false)
+    }
+  }
+
+  function handleRecordedDeposit(result: RecordDepositResult) {
+    refresh()
+    setRecordingOpen(false)
+    setRecordedResult(result)
+    notify(`Recorded ${currency(result.deposit.amount)} deposit.`, 'success')
+    playCue('success')
+  }
+
   const isEmpty = !loading && filtered.length === 0
+
+  function clearAllFilters() {
+    setSearch('')
+    setStatusFilter('all')
+    setMethods([])
+    setDateFrom('')
+    setDateTo('')
+    playCue('tap')
+  }
+
+  const activeFilterCount =
+    (search.trim() ? 1 : 0) +
+    (statusFilter !== 'all' ? 1 : 0) +
+    (methods.length ? 1 : 0) +
+    (dateFrom || dateTo ? 1 : 0)
+
+  const statusOptions = useMemo(
+    () =>
+      STATUSES.map((s) => ({ value: s.value as string, label: s.label })),
+    [],
+  )
+  const methodOptions = useMemo(
+    () => METHODS.map((m) => ({ value: m as string, label: paymentMethodLabel(m) })),
+    [],
+  )
 
   return (
     <div>
       <PageHeader
-        title="Deposit requests"
-        subtitle="Review top-up requests from members. Approve to credit the card or reject with a reason."
+        title="Deposits"
+        subtitle="Review top-up requests from members, manually record deposits, and audit the deposit ledger."
         actions={
-          <button onClick={refresh} className="btn-secondary">
-            <RefreshCw className="h-4 w-4" /> Refresh
-          </button>
+          <>
+            <button onClick={refresh} className="btn-secondary">
+              <RefreshCw className="h-4 w-4" /> Refresh
+            </button>
+            <button onClick={() => setRecordingOpen(true)} className="btn-primary">
+              <Plus className="h-4 w-4" /> Record a deposit
+            </button>
+          </>
         }
       />
 
@@ -323,81 +449,67 @@ export default function DepositRequestsPage() {
         />
       </div>
 
-      <div className="card mb-4 p-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <nav className="-mx-1 flex items-stretch gap-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {QUICK_TABS.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setStatusFilter(t.id)}
-                className={
-                  statusFilter === t.id
-                    ? 'inline-flex shrink-0 items-center gap-1.5 rounded-pill bg-ink-900 px-3 py-1.5 text-xs font-bold text-white shadow-soft'
-                    : 'inline-flex shrink-0 items-center gap-1.5 rounded-pill border border-ink-200 bg-white px-3 py-1.5 text-xs font-bold text-ink-700 hover:bg-ink-50'
-                }
-              >
-                {t.label}
-                {t.id !== 'all' && (
-                  <span
-                    className={
-                      statusFilter === t.id
-                        ? 'rounded-pill bg-white/20 px-1.5 text-[10px]'
-                        : 'rounded-pill bg-ink-100 px-1.5 text-[10px] text-ink-700'
-                    }
-                  >
-                    {t.id === 'approved'
-                      ? counts.approved + counts.completed
-                      : counts[t.id as Exclude<StatusFilter, 'all'>]}
-                  </span>
-                )}
-              </button>
-            ))}
-          </nav>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by member, card, reference…"
-                className="input w-full min-w-0 pl-9 sm:w-64"
-              />
-            </div>
-            <div
-              role="tablist"
-              aria-label="View mode"
-              className="hidden sm:inline-flex items-center rounded-pill border border-ink-200 bg-white p-0.5"
-            >
-              <button
-                role="tab"
-                aria-selected={viewMode === 'list'}
-                onClick={() => setViewMode('list')}
-                className={
-                  viewMode === 'list'
-                    ? 'inline-flex h-7 w-8 items-center justify-center rounded-pill bg-ink-900 text-white'
-                    : 'inline-flex h-7 w-8 items-center justify-center rounded-pill text-ink-500 hover:bg-ink-50'
-                }
-                title="List view"
-              >
-                <List className="h-3.5 w-3.5" />
-              </button>
-              <button
-                role="tab"
-                aria-selected={viewMode === 'grid'}
-                onClick={() => setViewMode('grid')}
-                className={
-                  viewMode === 'grid'
-                    ? 'inline-flex h-7 w-8 items-center justify-center rounded-pill bg-ink-900 text-white'
-                    : 'inline-flex h-7 w-8 items-center justify-center rounded-pill text-ink-500 hover:bg-ink-50'
-                }
-                title="Grid view"
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
+      <FilterBarSection activeCount={activeFilterCount} onClear={clearAllFilters}>
+        <FilterSearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search by member, card, reference…"
+        />
+        <FilterDateRange
+          from={dateFrom}
+          to={dateTo}
+          onChange={(next) => {
+            setDateFrom(next.from)
+            setDateTo(next.to)
+          }}
+        />
+        <FilterSelect
+          label="Status"
+          icon={<Clock className="h-3.5 w-3.5" />}
+          options={statusOptions}
+          selected={statusFilter === 'all' ? [] : [statusFilter]}
+          onChange={(v) => setStatusFilter((v[0] as StatusFilter) ?? 'all')}
+        />
+        <FilterSelect
+          label="Payment method"
+          icon={<Wallet className="h-3.5 w-3.5" />}
+          options={methodOptions}
+          selected={methods}
+          onChange={setMethods}
+        />
+        <div
+          role="tablist"
+          aria-label="View mode"
+          className="hidden sm:inline-flex items-center rounded-full border border-ink-200 bg-white p-0.5"
+        >
+          <button
+            role="tab"
+            aria-selected={viewMode === 'list'}
+            onClick={() => setViewMode('list')}
+            className={
+              viewMode === 'list'
+                ? 'inline-flex h-7 w-8 items-center justify-center rounded-full bg-ink-900 text-white'
+                : 'inline-flex h-7 w-8 items-center justify-center rounded-full text-ink-500 hover:bg-ink-50'
+            }
+            title="List view"
+          >
+            <List className="h-3.5 w-3.5" />
+          </button>
+          <button
+            role="tab"
+            aria-selected={viewMode === 'grid'}
+            onClick={() => setViewMode('grid')}
+            className={
+              viewMode === 'grid'
+                ? 'inline-flex h-7 w-8 items-center justify-center rounded-full bg-ink-900 text-white'
+                : 'inline-flex h-7 w-8 items-center justify-center rounded-full text-ink-500 hover:bg-ink-50'
+            }
+            title="Grid view"
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+          </button>
         </div>
-      </div>
+      </FilterBarSection>
 
       {error && (
         <div className="mb-3 flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
@@ -415,22 +527,23 @@ export default function DepositRequestsPage() {
         <EmptyState
           statusFilter={statusFilter}
           hasAny={requests.length > 0}
-          onClearFilters={() => {
-            setSearch('')
-            setStatusFilter('all')
-          }}
+          onClearFilters={clearAllFilters}
         />
       ) : viewMode === 'list' ? (
         <RequestsTable
           requests={paged}
           onReview={openReview}
           onCancel={handleCancelRequest}
+          onRevert={promptRevertApproved}
+          onReopen={handleReopen}
         />
       ) : (
         <RequestsGrid
           requests={paged}
           onReview={openReview}
           onCancel={handleCancelRequest}
+          onRevert={promptRevertApproved}
+          onReopen={handleReopen}
         />
       )}
 
@@ -451,9 +564,12 @@ export default function DepositRequestsPage() {
           approving={approving}
           rejecting={rejecting}
           approvalResult={approvalResult}
+          reopening={reopening}
           onClose={closeReview}
           onApprove={handleApprove}
           onReject={handleReject}
+          onPromptRevert={promptRevertApproved}
+          onReopen={handleReopen}
         />
       )}
 
@@ -469,6 +585,35 @@ export default function DepositRequestsPage() {
         onConfirm={commitCancel}
         onClose={() => setCancelConfirm(null)}
       />
+
+      <ConfirmDialog
+        open={revertConfirm !== null}
+        title="Undo approval of this deposit?"
+        description="Reverting will debit the original amount from the member's card and create a matching reversal entry in the deposit ledger. The request moves back to the pending queue."
+        impact={
+          revertConfirm
+            ? `${currency(revertConfirm.amount)} · card balance moves back`
+            : undefined
+        }
+        confirmLabel="Revert approval"
+        tone="danger"
+        onConfirm={commitRevertApproved}
+        onClose={() => setRevertConfirm(null)}
+      />
+
+      {recordingOpen && (
+        <RecordDepositDrawer
+          onClose={() => setRecordingOpen(false)}
+          onSaved={handleRecordedDeposit}
+        />
+      )}
+
+      {recordedResult && (
+        <RecordedDepositSuccess
+          result={recordedResult}
+          onClose={() => setRecordedResult(null)}
+        />
+      )}
     </div>
   )
 }
@@ -525,10 +670,14 @@ function RequestsTable({
   requests,
   onReview,
   onCancel,
+  onRevert,
+  onReopen,
 }: {
   requests: DepositRequest[]
   onReview: (r: DepositRequest) => void
   onCancel: (r: DepositRequest) => void
+  onRevert: (r: DepositRequest) => void
+  onReopen: (r: DepositRequest) => void
 }) {
   return (
     <div className="card scroll-soft p-0">
@@ -577,6 +726,8 @@ function RequestsTable({
                       req={r}
                       onReview={onReview}
                       onCancel={onCancel}
+                      onRevert={onRevert}
+                      onReopen={onReopen}
                     />
                   </td>
                 </tr>
@@ -593,10 +744,14 @@ function RequestsGrid({
   requests,
   onReview,
   onCancel,
+  onRevert,
+  onReopen,
 }: {
   requests: DepositRequest[]
   onReview: (r: DepositRequest) => void
   onCancel: (r: DepositRequest) => void
+  onRevert: (r: DepositRequest) => void
+  onReopen: (r: DepositRequest) => void
 }) {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -648,6 +803,8 @@ function RequestsGrid({
                 req={r}
                 onReview={onReview}
                 onCancel={onCancel}
+                onRevert={onRevert}
+                onReopen={onReopen}
                 fullWidth
               />
             </div>
@@ -662,11 +819,15 @@ function RequestActions({
   req,
   onReview,
   onCancel,
+  onRevert,
+  onReopen,
   fullWidth,
 }: {
   req: DepositRequest
   onReview: (r: DepositRequest) => void
   onCancel: (r: DepositRequest) => void
+  onRevert: (r: DepositRequest) => void
+  onReopen: (r: DepositRequest) => void
   fullWidth?: boolean
 }) {
   if (req.status === 'pending') {
@@ -697,29 +858,56 @@ function RequestActions({
   }
   if (req.status === 'rejected' || req.status === 'cancelled') {
     return (
+      <div className={fullWidth ? 'flex gap-2' : 'inline-flex gap-1.5'}>
+        <button
+          onClick={() => onReview(req)}
+          className={
+            fullWidth
+              ? 'btn-secondary flex-1'
+              : 'btn-secondary px-2.5 py-1.5 text-xs'
+          }
+        >
+          <Eye className="h-3.5 w-3.5" /> View
+        </button>
+        <button
+          onClick={() => onReopen(req)}
+          className={
+            fullWidth
+              ? 'btn-secondary flex-1'
+              : 'btn-secondary px-2.5 py-1.5 text-xs'
+          }
+          title="Move this request back to pending"
+        >
+          <RotateCcw className="h-3.5 w-3.5" /> Reopen
+        </button>
+      </div>
+    )
+  }
+  // approved / completed
+  return (
+    <div className={fullWidth ? 'flex gap-2' : 'inline-flex gap-1.5'}>
       <button
         onClick={() => onReview(req)}
         className={
           fullWidth
-            ? 'btn-secondary w-full'
+            ? 'btn-secondary flex-1'
             : 'btn-secondary px-2.5 py-1.5 text-xs'
         }
       >
         <Eye className="h-3.5 w-3.5" /> View
       </button>
-    )
-  }
-  return (
-    <Link
-      to={`/app/cards/${req.cardId}`}
-      className={
-        fullWidth
-          ? 'btn-secondary w-full'
-          : 'btn-secondary px-2.5 py-1.5 text-xs'
-      }
-    >
-      <Eye className="h-3.5 w-3.5" /> View card
-    </Link>
+      <button
+        onClick={() => onRevert(req)}
+        className={
+          fullWidth
+            ? 'btn-danger flex-1'
+            : 'btn-danger px-2.5 py-1.5 text-xs'
+        }
+        title="Debit the member's card and move back to pending"
+      >
+        <Undo2 className="h-3.5 w-3.5" /> Undo
+      </button>
+    </div>
   )
 }
 
@@ -815,17 +1003,23 @@ function ReviewDrawer({
   approving,
   rejecting,
   approvalResult,
+  reopening,
   onClose,
   onApprove,
   onReject,
+  onPromptRevert,
+  onReopen,
 }: {
   request: DepositRequest
   approving: boolean
   rejecting: boolean
   approvalResult: ApproveDepositRequestResult | null
+  reopening: boolean
   onClose: () => void
   onApprove: () => void
   onReject: (reason: string) => void
+  onPromptRevert: (r: DepositRequest) => void
+  onReopen: (r: DepositRequest) => void
 }) {
   const [reason, setReason] = useState('Insufficient payment confirmation')
   const member = getMember(request.memberId)
@@ -985,9 +1179,20 @@ function ReviewDrawer({
 
         <div className="border-t border-ink-100 p-4">
           {approvalResult ? (
-            <button onClick={onClose} className="btn-primary w-full py-3">
-              <CheckCircle2 className="h-4 w-4" /> Done
-            </button>
+            <div className="space-y-2">
+              <button onClick={onClose} className="btn-primary w-full py-3">
+                <CheckCircle2 className="h-4 w-4" /> Done
+              </button>
+              {!reopening && (
+                <button
+                  type="button"
+                  onClick={() => onPromptRevert(request)}
+                  className="btn-secondary w-full py-3"
+                >
+                  <Undo2 className="h-4 w-4" /> Undo approval
+                </button>
+              )}
+            </div>
           ) : isPending ? (
             <div className="flex items-center gap-2">
               <button
@@ -1014,6 +1219,60 @@ function ReviewDrawer({
                 )}
                 Approve & credit
               </button>
+            </div>
+          ) : request.status === 'approved' || request.status === 'completed' ? (
+            <div className="space-y-2">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800">
+                <div className="flex items-start gap-2">
+                  <RotateCcw className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    Undoing this approval will debit {currency(request.amount)} from the
+                    member's card and append a reversal entry to the deposit ledger.
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={onClose} className="btn-secondary flex-1 py-3">
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onPromptRevert(request)}
+                  className="btn-danger flex-1 py-3"
+                >
+                  <Undo2 className="h-4 w-4" /> Undo approval
+                </button>
+              </div>
+            </div>
+          ) : request.status === 'rejected' || request.status === 'cancelled' ? (
+            <div className="space-y-2">
+              <div className="rounded-2xl border border-ink-200 bg-ink-50 p-3 text-[11px] text-ink-600">
+                <div className="flex items-start gap-2">
+                  <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    Reopening sends this request back to the pending queue. No money is
+                    moved until you approve it.
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={onClose} className="btn-secondary flex-1 py-3">
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onReopen(request)}
+                  disabled={reopening}
+                  className="btn-primary flex-1 py-3"
+                >
+                  {reopening ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-4 w-4" />
+                  )}
+                  Reopen
+                </button>
+              </div>
             </div>
           ) : (
             <button onClick={onClose} className="btn-secondary w-full py-3">
@@ -1050,5 +1309,385 @@ function ApprovalSuccess({
       </div>
     </div>
   )
+}
+
+// ---- Record a deposit (manual entry) -----------------------------------
+
+interface RecordDepositForm {
+  memberId: string
+  cardId: string
+  amount: string
+  method: 'cash' | 'card' | 'bank' | 'wallet'
+  reference: string
+  at: string
+  note: string
+  status: 'completed' | 'pending'
+}
+
+function RecordDepositDrawer({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void
+  onSaved: (r: RecordDepositResult) => void
+}) {
+  const members = getMembers()
+  const cards = getCards()
+  const [form, setForm] = useState<RecordDepositForm>({
+    memberId: '',
+    cardId: '',
+    amount: '',
+    method: 'cash',
+    reference: '',
+    at: toLocalInput(new Date()),
+    note: '',
+    status: 'completed',
+  })
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  // Filter cards by the selected member so they always match.
+  const eligibleCards = useMemo(() => {
+    if (!form.memberId) return cards
+    return cards.filter((c) => c.memberId === form.memberId)
+  }, [cards, form.memberId])
+
+  // When the user picks a member, default the card to their first eligible
+  // card. The operator can override.
+  useEffect(() => {
+    if (form.memberId && !eligibleCards.find((c) => c.id === form.cardId)) {
+      setForm((f) => ({ ...f, cardId: eligibleCards[0]?.id ?? '' }))
+    }
+    if (!form.memberId) {
+      setForm((f) => ({ ...f, cardId: '' }))
+    }
+  }, [form.memberId, eligibleCards, form.cardId])
+
+  function set<K extends keyof RecordDepositForm>(
+    key: K,
+    value: RecordDepositForm[K],
+  ) {
+    setForm((f) => ({ ...f, [key]: value }))
+  }
+
+  function handleSave() {
+    setError(null)
+    if (!form.memberId) {
+      setError('Pick a member first.')
+      return
+    }
+    if (!form.cardId) {
+      setError('Pick a card to credit.')
+      return
+    }
+    const amount = Number(form.amount)
+    if (!isFinite(amount) || amount <= 0) {
+      setError('Amount must be a positive number.')
+      return
+    }
+    const atIso = fromLocalInput(form.at) ?? new Date().toISOString()
+    setSaving(true)
+    try {
+      const result = recordDeposit({
+        cardId: form.cardId,
+        amount,
+        method: form.method,
+        reference: form.reference.trim() || undefined,
+        note: form.note.trim() || undefined,
+        at: form.status === 'completed' ? atIso : atIso,
+      })
+      if (!result) {
+        setError('Could not record the deposit. Check the card and try again.')
+        setSaving(false)
+        playCue('warning')
+        return
+      }
+      onSaved(result)
+    } catch {
+      setError('An unexpected error occurred while recording the deposit.')
+      setSaving(false)
+      playCue('warning')
+    }
+  }
+
+  const selectedCard = form.cardId ? cards.find((c) => c.id === form.cardId) : null
+
+  return (
+    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-ink-900/50" onClick={onClose} />
+      <div className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] animate-[slideUp_0.25s_ease-out] flex-col overflow-hidden rounded-t-3xl bg-white shadow-pop md:inset-y-0 md:right-0 md:left-auto md:max-h-full md:w-full md:max-w-md md:animate-[slideIn_0.25s_ease-out] md:rounded-none">
+        <div className="flex items-start justify-between border-b border-ink-100 px-5 py-4">
+          <div>
+            <div className="text-base font-bold text-ink-900">Record a deposit</div>
+            <p className="mt-0.5 text-xs text-ink-500">
+              Manually credit a member's card. A new deposit entry will be added to the
+              ledger and the wallet balance will update immediately.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="grid h-8 w-8 place-items-center rounded-full bg-ink-100 text-ink-700"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          <div>
+            <label className="label">Member</label>
+            <select
+              className="input"
+              value={form.memberId}
+              onChange={(e) => set('memberId', e.target.value)}
+            >
+              <option value="">Select a member…</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} {m.email ? `· ${m.email}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="label">Card</label>
+            <select
+              className="input"
+              value={form.cardId}
+              onChange={(e) => set('cardId', e.target.value)}
+              disabled={eligibleCards.length === 0}
+            >
+              <option value="">
+                {eligibleCards.length === 0
+                  ? form.memberId
+                    ? 'No cards on file for this member'
+                    : 'Pick a member first'
+                  : 'Select a card…'}
+              </option>
+              {eligibleCards.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {maskCardNumber(c.cardNumber)} · Balance {currency(c.balance)}
+                </option>
+              ))}
+            </select>
+            {selectedCard && (
+              <p className="mt-1 text-[11px] text-ink-500">
+                Current balance {currency(selectedCard.balance)} → will become{' '}
+                <span className="font-semibold text-ink-700">
+                  {currency(
+                    selectedCard.balance + (Number(form.amount) || 0),
+                  )}
+                </span>
+              </p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Amount</label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-ink-500">
+                  $
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  className="input pl-6"
+                  value={form.amount}
+                  onChange={(e) => set('amount', e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="label">Payment method</label>
+              <select
+                className="input"
+                value={form.method}
+                onChange={(e) =>
+                  set('method', e.target.value as RecordDepositForm['method'])
+                }
+              >
+                {(['cash', 'card', 'bank', 'wallet'] as const).map((m) => (
+                  <option key={m} value={m}>
+                    {paymentMethodLabel(m)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Reference (optional)</label>
+            <input
+              className="input"
+              value={form.reference}
+              onChange={(e) => set('reference', e.target.value)}
+              placeholder="e.g. receipt number, transfer id"
+            />
+          </div>
+
+          <div>
+            <label className="label">Date / time</label>
+            <input
+              type="datetime-local"
+              className="input"
+              value={form.at}
+              onChange={(e) => set('at', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="label">Status</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['completed', 'pending'] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => set('status', s)}
+                  className={
+                    form.status === s
+                      ? 'rounded-xl border border-brand-500 bg-brand-50 px-3 py-2 text-xs font-semibold text-ink-900 ring-1 ring-brand-500/40'
+                      : 'rounded-xl border border-ink-200 bg-white px-3 py-2 text-xs font-semibold text-ink-700 hover:bg-ink-50'
+                  }
+                >
+                  {s === 'completed' ? 'Completed (credit now)' : 'Pending (record only)'}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] text-ink-500">
+              Completed credits the wallet immediately. Pending stores the entry without
+              changing the balance — you'll approve it later.
+            </p>
+          </div>
+
+          <div>
+            <label className="label">Note (optional)</label>
+            <textarea
+              className="input min-h-[64px] resize-none"
+              value={form.note}
+              onChange={(e) => set('note', e.target.value)}
+              placeholder="Any context the audit log should capture"
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-ink-100 p-4">
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="btn-secondary flex-1">
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="btn-primary flex-1"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Check className="h-4 w-4" />
+              )}
+              Record deposit
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function RecordedDepositSuccess({
+  result,
+  onClose,
+}: {
+  result: RecordDepositResult
+  onClose: () => void
+}) {
+  const member = getMember(getCards().find((c) => c.id === result.deposit.cardId)?.memberId ?? null)
+  return (
+    <div className="fixed inset-0 z-[55]" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-ink-900/50" onClick={onClose} />
+      <div className="absolute inset-0 grid place-items-center p-3 sm:p-6">
+        <div className="relative w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-pop">
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-ink-100 text-ink-700 hover:bg-ink-200"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <div className="grid place-items-center gap-2 px-6 py-10 text-center">
+            <div className="grid h-14 w-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
+              <CheckCircle2 className="h-7 w-7" />
+            </div>
+            <div className="text-base font-bold text-ink-900">Deposit recorded</div>
+            <p className="max-w-sm text-sm text-ink-600">
+              <span className="font-bold text-ink-900">
+                {currency(result.deposit.amount)}
+              </span>{' '}
+              has been credited to {member?.name ?? 'the member'}'s card.
+            </p>
+            <div className="mt-3 grid w-full grid-cols-2 gap-2 text-left text-[11px]">
+              <div className="rounded-2xl border border-ink-100 bg-ink-50/40 p-2.5">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-ink-500">
+                  Card
+                </div>
+                <div className="font-mono text-xs font-semibold text-ink-900">
+                  {maskCardNumber(result.card.cardNumber)}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-ink-100 bg-ink-50/40 p-2.5">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-ink-500">
+                  New balance
+                </div>
+                <div className="text-xs font-bold text-ink-900">
+                  {currency(result.card.balance)}
+                </div>
+              </div>
+            </div>
+            <div className="mt-2 inline-flex items-center gap-1.5 rounded-pill border border-ink-200 bg-ink-50 px-3 py-1 text-[11px] font-mono text-ink-700">
+              <FileText className="h-3 w-3" /> {result.deposit.id}
+            </div>
+            <button onClick={onClose} className="btn-primary mt-4 w-full py-3">
+              <Check className="h-4 w-4" /> Done
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---- date helpers -------------------------------------------------------
+
+function toLocalInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours(),
+  )}:${pad(d.getMinutes())}`
+}
+
+function fromLocalInput(s: string): string | null {
+  if (!s) return null
+  const d = new Date(s)
+  if (isNaN(d.getTime())) return null
+  return d.toISOString()
 }
 

@@ -13,9 +13,9 @@ import {
   Copy,
   Eye,
   EyeOff,
-  Filter,
   Grid3x3,
   ImageIcon,
+  Layers,
   List,
   MoreHorizontal,
   Package,
@@ -32,6 +32,12 @@ import { ResponsiveTable, Field, FieldRow } from '../../components/ResponsiveTab
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { ToastViewport, useToast } from '../../components/Toast'
 import {
+  FilterBarSection,
+  FilterSearchInput,
+  FilterSelect,
+} from '../../components/FilterBar'
+import { ImagePickerModal } from '../../components/ImagePickerModal'
+import {
   archiveProduct,
   createProduct,
   deleteProduct,
@@ -47,6 +53,7 @@ import {
   type ProductBadge,
 } from '../../pos-store'
 import { CATEGORIES_UPDATED_EVENT, getCategoriesForBusiness } from '../../categories-store'
+import { PRESET_IMAGES } from '../../lib/preset-images'
 import { getBusiness } from '../../store'
 import { playCue } from '../../audio'
 
@@ -75,6 +82,12 @@ interface FormState {
   name: string
   description: string
   image: string
+  /** Stable, unique product code (searchable from POS / scannable). */
+  productCode: string
+  /** Optional barcode value (often the same as the product code). */
+  barcode: string
+  /** When true, POS shows the price-edit dialog before adding to cart. */
+  allowPriceEdit: boolean
   sku: string
   category: string
   price: string
@@ -99,6 +112,9 @@ const DEFAULT_FORM: FormState = {
   name: '',
   description: '',
   image: '',
+  productCode: '',
+  barcode: '',
+  allowPriceEdit: false,
   sku: '',
   category: '',
   price: '',
@@ -200,6 +216,9 @@ function productToForm(p: POSProduct): FormState {
     name: p.name,
     description: p.description,
     image: p.image,
+    productCode: p.productCode ?? '',
+    barcode: p.barcode ?? '',
+    allowPriceEdit: !!p.allowPriceEdit,
     sku: p.sku,
     category: p.category,
     price: String(p.price ?? ''),
@@ -250,6 +269,9 @@ function formToPayload(f: FormState) {
     featured: f.featured,
     badge: (f.badge || undefined) as ProductBadge | undefined,
     badgeLabel: f.badge ? f.badgeLabel.trim() || undefined : undefined,
+    productCode: f.productCode.trim() || undefined,
+    barcode: f.barcode.trim() || undefined,
+    allowPriceEdit: f.allowPriceEdit,
   }
 }
 
@@ -260,6 +282,7 @@ function formToPayload(f: FormState) {
 export default function ProductsPage() {
   const business = getBusiness()
   const [products, setProducts] = useState<POSProduct[]>([])
+  const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>('all')
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
@@ -324,7 +347,21 @@ export default function ProductsPage() {
   }, [products])
 
   const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
     return products.filter((p) => {
+      if (q) {
+        const hay = [
+          p.name,
+          p.sku ?? '',
+          p.productCode ?? '',
+          p.barcode ?? '',
+          p.category ?? '',
+          p.description ?? '',
+        ]
+          .join(' ')
+          .toLowerCase()
+        if (!hay.includes(q)) return false
+      }
       if (statusFilter !== 'all' && p.status !== statusFilter) return false
       if (availabilityFilter === 'available' && !p.available) return false
       if (availabilityFilter === 'hidden' && p.available) return false
@@ -341,7 +378,7 @@ export default function ProductsPage() {
       }
       return true
     })
-  }, [products, statusFilter, availabilityFilter, stockFilter, categoryFilter])
+  }, [products, search, statusFilter, availabilityFilter, stockFilter, categoryFilter])
 
   const sorted = useMemo(() => {
     const arr = [...filtered]
@@ -380,7 +417,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [statusFilter, availabilityFilter, stockFilter, categoryFilter, pageSize])
+  }, [search, statusFilter, availabilityFilter, stockFilter, categoryFilter, pageSize])
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -478,10 +515,58 @@ export default function ProductsPage() {
   }
 
   const hasFilters =
+    !!search.trim() ||
     statusFilter !== 'all' ||
     availabilityFilter !== 'all' ||
     stockFilter !== 'all' ||
     categoryFilter !== 'all'
+
+  const activeFilterCount =
+    (search.trim() ? 1 : 0) +
+    (statusFilter !== 'all' ? 1 : 0) +
+    (availabilityFilter !== 'all' ? 1 : 0) +
+    (stockFilter !== 'all' ? 1 : 0) +
+    (categoryFilter !== 'all' ? 1 : 0)
+
+  function clearAllFilters() {
+    setSearch('')
+    setStatusFilter('all')
+    setAvailabilityFilter('all')
+    setStockFilter('all')
+    setCategoryFilter('all')
+    playCue('tap')
+  }
+
+  const statusOptions = useMemo(
+    () =>
+      STATUS_FILTERS.filter((s) => s.id !== 'all').map((s) => ({
+        value: s.id as string,
+        label: s.label,
+      })),
+    [],
+  )
+  const categoryOptions = useMemo(
+    () => categories.map((c) => ({ value: c, label: c })),
+    [categories],
+  )
+  const stockOptions = useMemo(
+    () =>
+      [
+        { value: 'in_stock', label: 'In stock' },
+        { value: 'low', label: 'Low stock' },
+        { value: 'out', label: 'Out of stock' },
+        { value: 'untracked', label: 'Not tracked' },
+      ].map((s) => ({ value: s.value, label: s.label })),
+    [],
+  )
+  const availabilityOptions = useMemo(
+    () =>
+      [
+        { value: 'available', label: 'Available in POS' },
+        { value: 'hidden', label: 'Hidden in POS' },
+      ].map((s) => ({ value: s.value, label: s.label })),
+    [],
+  )
 
   return (
     <div>
@@ -535,93 +620,80 @@ export default function ProductsPage() {
         />
       </div>
 
-      <div className="card p-4 sm:p-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-end">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1 rounded-pill border border-ink-200 bg-white p-1">
-              <Filter className="ml-2 h-3.5 w-3.5 text-ink-400" />
-              {STATUS_FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => setStatusFilter(f.id)}
-                  className={
-                    statusFilter === f.id
-                      ? 'rounded-pill bg-ink-900 px-2.5 py-1 text-[11px] font-semibold text-white'
-                      : 'rounded-pill px-2.5 py-1 text-[11px] font-semibold text-ink-700 hover:bg-ink-50'
-                  }
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            <select
-              className="h-10 !w-40 shrink-0 rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-            >
-              <option value="all">All categories</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-            <select
-              className="h-10 !w-36 shrink-0 rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-              value={stockFilter}
-              onChange={(e) => setStockFilter(e.target.value as StockFilter)}
-            >
-              <option value="all">All stock</option>
-              <option value="in_stock">In stock</option>
-              <option value="low">Low stock</option>
-              <option value="out">Out of stock</option>
-              <option value="untracked">Not tracked</option>
-            </select>
-            <select
-              className="h-10 !w-40 shrink-0 rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-              value={availabilityFilter}
-              onChange={(e) => setAvailabilityFilter(e.target.value as AvailabilityFilter)}
-            >
-              <option value="all">All availability</option>
-              <option value="available">Available in POS</option>
-              <option value="hidden">Hidden in POS</option>
-            </select>
-            <div
-              role="tablist"
-              aria-label="View mode"
-              className="inline-flex items-center rounded-pill border border-ink-200 bg-white p-0.5"
-            >
-              <button
-                role="tab"
-                aria-selected={view === 'list'}
-                onClick={() => setView('list')}
-                className={
-                  view === 'list'
-                    ? 'inline-flex h-7 w-8 items-center justify-center rounded-pill bg-ink-900 text-white'
-                    : 'inline-flex h-7 w-8 items-center justify-center rounded-pill text-ink-500 hover:bg-ink-50'
-                }
-                title="List view"
-              >
-                <List className="h-3.5 w-3.5" />
-              </button>
-              <button
-                role="tab"
-                aria-selected={view === 'grid'}
-                onClick={() => setView('grid')}
-                className={
-                  view === 'grid'
-                    ? 'inline-flex h-7 w-8 items-center justify-center rounded-pill bg-ink-900 text-white'
-                    : 'inline-flex h-7 w-8 items-center justify-center rounded-pill text-ink-500 hover:bg-ink-50'
-                }
-                title="Grid view"
-              >
-                <Grid3x3 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
+      <FilterBarSection activeCount={activeFilterCount} onClear={clearAllFilters}>
+        <FilterSearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search by name, SKU, category, or description…"
+        />
+        <FilterSelect
+          label="Category"
+          icon={<Layers className="h-3.5 w-3.5" />}
+          options={categoryOptions}
+          selected={categoryFilter === 'all' ? [] : [categoryFilter]}
+          onChange={(v) => setCategoryFilter(v[0] ?? 'all')}
+        />
+        <FilterSelect
+          label="Status"
+          icon={<Check className="h-3.5 w-3.5" />}
+          options={statusOptions}
+          selected={statusFilter === 'all' ? [] : [statusFilter]}
+          onChange={(v) => setStatusFilter((v[0] as StatusFilter) ?? 'all')}
+        />
+        <FilterSelect
+          label="Stock"
+          icon={<Archive className="h-3.5 w-3.5" />}
+          options={stockOptions}
+          selected={stockFilter === 'all' ? [] : [stockFilter]}
+          onChange={(v) => setStockFilter((v[0] as StockFilter) ?? 'all')}
+        />
+        <FilterSelect
+          label="Availability"
+          icon={<Eye className="h-3.5 w-3.5" />}
+          options={availabilityOptions}
+          selected={
+            availabilityFilter === 'all' ? [] : [availabilityFilter]
+          }
+          onChange={(v) =>
+            setAvailabilityFilter((v[0] as AvailabilityFilter) ?? 'all')
+          }
+        />
+        <div
+          role="tablist"
+          aria-label="View mode"
+          className="inline-flex items-center rounded-full border border-ink-200 bg-white p-0.5"
+        >
+          <button
+            role="tab"
+            aria-selected={view === 'list'}
+            onClick={() => setView('list')}
+            className={
+              view === 'list'
+                ? 'inline-flex h-7 w-8 items-center justify-center rounded-full bg-ink-900 text-white'
+                : 'inline-flex h-7 w-8 items-center justify-center rounded-full text-ink-500 hover:bg-ink-50'
+            }
+            title="List view"
+          >
+            <List className="h-3.5 w-3.5" />
+          </button>
+          <button
+            role="tab"
+            aria-selected={view === 'grid'}
+            onClick={() => setView('grid')}
+            className={
+              view === 'grid'
+                ? 'inline-flex h-7 w-8 items-center justify-center rounded-full bg-ink-900 text-white'
+                : 'inline-flex h-7 w-8 items-center justify-center rounded-full text-ink-500 hover:bg-ink-50'
+            }
+            title="Grid view"
+          >
+            <Grid3x3 className="h-3.5 w-3.5" />
+          </button>
         </div>
+      </FilterBarSection>
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-500">
+      <div className="card p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-500">
           <div>
             Showing{' '}
             <span className="font-semibold text-ink-700">{sorted.length}</span> of{' '}
@@ -629,20 +701,6 @@ export default function ProductsPage() {
             {hasFilters ? ' · filtered' : ''}
           </div>
           <div className="flex items-center gap-2">
-            {hasFilters && (
-              <button
-                onClick={() => {
-                  setStatusFilter('all')
-                  setAvailabilityFilter('all')
-                  setStockFilter('all')
-                  setCategoryFilter('all')
-                  playCue('tap')
-                }}
-                className="text-xs font-semibold text-ink-700 hover:underline"
-              >
-                Reset filters
-              </button>
-            )}
             <div className="flex items-center gap-1.5 text-ink-600">
               <ArrowDownUp className="h-3.5 w-3.5" />
               <select
@@ -671,12 +729,7 @@ export default function ProductsPage() {
           <EmptyState
             onCreate={openCreate}
             hasFilters={hasFilters}
-            onReset={() => {
-              setStatusFilter('all')
-              setAvailabilityFilter('all')
-              setStockFilter('all')
-              setCategoryFilter('all')
-            }}
+            onReset={clearAllFilters}
           />
         ) : view === 'list' ? (
           <ProductsTable
@@ -1645,26 +1698,35 @@ function ProductEditorModal({
                   options={categories}
                 />
               </div>
-              <div className="sm:col-span-2">
-                <label className="label">Image URL</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    className="input flex-1"
-                    value={form.image}
-                    onChange={(e) => set('image', e.target.value)}
-                    placeholder="https://…"
-                  />
-                  <div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg border border-ink-200 bg-ink-50 text-ink-300">
-                    {form.image ? (
-                      <img src={form.image} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <ImageIcon className="h-4 w-4" />
-                    )}
-                  </div>
-                </div>
+              <div>
+                <label className="label">Product code</label>
+                <input
+                  className="input font-mono uppercase"
+                  value={form.productCode}
+                  onChange={(e) => set('productCode', e.target.value.toUpperCase())}
+                  placeholder="e.g. PZA-BBQ-001"
+                />
                 <p className="mt-1 text-[11px] text-ink-500">
-                  Use a square image for the best POS card layout. Leave blank to use a placeholder.
+                  Unique in your catalog. Searchable from POS and scannable at checkout.
                 </p>
+              </div>
+              <div>
+                <label className="label">Barcode (optional)</label>
+                <input
+                  className="input font-mono"
+                  value={form.barcode}
+                  onChange={(e) => set('barcode', e.target.value)}
+                  placeholder="EAN / UPC value"
+                />
+                <p className="mt-1 text-[11px] text-ink-500">
+                  Used by hardware scanners. Falls back to the product code when blank.
+                </p>
+              </div>
+              <div className="sm:col-span-2">
+                <ImageSelector
+                  value={form.image}
+                  onChange={(v) => set('image', v)}
+                />
               </div>
             </div>
           </Section>
@@ -1782,6 +1844,25 @@ function ProductEditorModal({
                   </div>
                 </div>
               )}
+            </div>
+
+            <div className="mt-3 rounded-2xl border border-ink-100 bg-ink-50/40 p-3">
+              <label className="flex cursor-pointer items-start gap-2 text-sm font-semibold text-ink-800">
+                <input
+                  type="checkbox"
+                  checked={form.allowPriceEdit}
+                  onChange={(e) => set('allowPriceEdit', e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-500 focus:ring-brand-500"
+                />
+                <span>
+                  Allow price edit at POS
+                  <span className="mt-0.5 block text-[11px] font-normal text-ink-500">
+                    When enabled, the cashier can override the selling price before
+                    adding this product to the cart. The configured price is
+                    preserved.
+                  </span>
+                </span>
+              </label>
             </div>
           </Section>
 
@@ -2124,4 +2205,124 @@ function CategoryInput({
 }
 
 // Re-export for the editor so it can grab the running productId if needed
+
+// ---------------------------------------------------------------------------
+// Image selector — combines a URL input with a preset gallery. Keeps the
+// existing image-URL affordance (for brand-specific imagery) while exposing
+// ---------------------------------------------------------------------------
+// Preset image gallery
+//
+// The full preset list lives in `lib/preset-images.ts` so the inline
+// `ImageSelector` and the dedicated `ImagePickerModal` modal can share the
+// same source. A quick "tap to use" gallery remains inline in the product
+// editor for fast picking; the modal opens from the URL preview tile or the
+// "browse gallery" link.
+// ---------------------------------------------------------------------------
+
+function ImageSelector({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (next: string) => void
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false)
+  return (
+    <div>
+      <label className="label">Image</label>
+      <div className="flex items-center gap-2">
+        <input
+          className="input flex-1"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Paste an image URL or pick a preset below"
+        />
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          className={
+            value
+              ? 'grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg border-2 border-brand-500 bg-brand-50 text-ink-900 transition-colors hover:border-brand-400'
+              : 'grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg border border-ink-200 bg-ink-50 text-ink-300 transition-colors hover:border-brand-500 hover:bg-brand-50 hover:text-ink-700'
+          }
+          title="Browse image gallery"
+          aria-label="Browse image gallery"
+        >
+          {value ? (
+            <img src={value} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <ImageIcon className="h-4 w-4" />
+          )}
+        </button>
+      </div>
+      <p className="mt-1 text-[11px] text-ink-500">
+        Use a square image for the best POS card layout. Or{' '}
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          className="font-semibold text-ink-700 underline-offset-2 hover:underline"
+        >
+          browse the gallery
+        </button>{' '}
+        to pick from presets. Leave blank to use a placeholder.
+      </p>
+      <div className="mt-3">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-ink-500">
+          Preset gallery
+        </div>
+        <div className="mt-2 grid grid-cols-5 gap-2">
+          {PRESET_IMAGES.map((preset) => {
+            const active = value === preset.url
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => onChange(preset.url)}
+                className={
+                  active
+                    ? 'group relative aspect-square overflow-hidden rounded-xl border-2 border-brand-500 ring-2 ring-brand-500/30'
+                    : 'group relative aspect-square overflow-hidden rounded-xl border border-ink-200 transition-colors hover:border-ink-300'
+                }
+                title={preset.label}
+                aria-label={`Use ${preset.label} image`}
+                aria-pressed={active}
+              >
+                <img
+                  src={preset.url}
+                  alt={preset.label}
+                  loading="lazy"
+                  className="h-full w-full object-cover"
+                />
+                {active && (
+                  <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-brand-500 text-ink-900">
+                    <Check className="h-3 w-3" />
+                  </span>
+                )}
+                <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink-900/80 to-transparent px-1 py-1 text-[9px] font-semibold uppercase tracking-wide text-white">
+                  {preset.label}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold text-ink-700 hover:underline"
+        >
+          Open full gallery…
+        </button>
+      </div>
+      <ImagePickerModal
+        open={pickerOpen}
+        initialValue={value}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(url) => {
+          onChange(url)
+          setPickerOpen(false)
+        }}
+      />
+    </div>
+  )
+}
 

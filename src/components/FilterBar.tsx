@@ -7,6 +7,55 @@ export interface FilterOption {
   hint?: string | undefined
 }
 
+interface FilterBarSectionProps {
+  children: ReactNode
+  /**
+   * Number of active filters. When > 0 a "Clear (N)" pill is appended to the
+   * row using the same visual treatment as the Orders screen.
+   */
+  activeCount?: number
+  onClear?: () => void
+  clearLabel?: string
+  className?: string
+}
+
+/**
+ * Canonical management-screen filter section. Mirrors the exact visual +
+ * spacing language used on the Orders screen (a `card` container, `p-4
+ * sm:p-3` padding, `flex flex-wrap items-center gap-2` row, `h-9` control
+ * height). Place all `FilterSearchInput` / `FilterDateRange` / `FilterSelect`
+ * controls inside — and pass `activeCount` + `onClear` to render the
+ * standard "Clear (N)" pill when any filter is active.
+ *
+ * Responsive behaviour: the row wraps on small screens and each control
+ * shrinks to its own min-width. The section itself never overflows because
+ * it relies on `flex-wrap` instead of a fixed grid.
+ */
+export function FilterBarSection({
+  children,
+  activeCount = 0,
+  onClear,
+  clearLabel = 'Clear',
+  className = '',
+}: FilterBarSectionProps) {
+  return (
+    <div className={`card mb-4 p-4 sm:p-3 ${className}`.trim()}>
+      <div className="flex flex-wrap items-center gap-2">
+        {children}
+        {activeCount > 0 && onClear && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-ink-200 bg-white px-3 text-xs font-semibold text-ink-700 hover:bg-ink-50"
+          >
+            <X className="h-3 w-3" /> {clearLabel} ({activeCount})
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 interface FilterBarInputProps {
   value: string
   onChange: (v: string) => void

@@ -2,7 +2,6 @@ import { Link, NavLink, useNavigate } from 'react-router-dom'
 import {
   ChevronDown,
   Heart,
-  LayoutDashboard,
   LayoutGrid,
   ListOrdered,
   MapPin,
@@ -17,6 +16,7 @@ import { getAuth } from '../store'
 import { getLocations } from '../orders-store'
 import { useActiveLocation } from '../active-location'
 import { isLocationOpenNow } from '../location-utils'
+import { useIsMultiLocation } from '../hooks/useIsMultiLocation'
 
 const NAV_ITEMS = [
   { to: '/app/dashboard', label: 'Dashboard', icon: LayoutGrid },
@@ -35,6 +35,7 @@ export function POSNavbar() {
   const [open, setOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
+  const multi = useIsMultiLocation()
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -75,93 +76,110 @@ export function POSNavbar() {
         </nav>
 
         <div className="flex items-center justify-end gap-1.5 sm:gap-2">
-          <div ref={wrapRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setOpen((o) => !o)}
-              className="inline-flex items-center gap-2 rounded-pill border border-ink-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 transition-colors hover:bg-ink-50"
-              aria-label="Switch active location"
+          {multi ? (
+            <div ref={wrapRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setOpen((o) => !o)}
+                className="inline-flex items-center gap-2 rounded-pill border border-ink-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 transition-colors hover:bg-ink-50"
+                aria-label="Switch active location"
+              >
+                <MapPin className="h-3.5 w-3.5 text-ink-500" />
+                <span className="max-w-[180px] truncate">
+                  {activeLocation.location?.name ?? 'Select location'}
+                </span>
+                {activeLocation.location && (
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      isLocationOpenNow(activeLocation.location)
+                        ? 'bg-emerald-500'
+                        : activeLocation.location.status === 'active'
+                        ? 'bg-amber-500'
+                        : 'bg-ink-300'
+                    }`}
+                    aria-hidden
+                  />
+                )}
+                <ChevronDown className="h-3.5 w-3.5 text-ink-400" />
+              </button>
+              {open && (
+                <div className="absolute right-0 top-full z-40 mt-2 w-72 overflow-hidden rounded-2xl border border-ink-100 bg-white p-1.5 shadow-pop">
+                  <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-ink-400">
+                    Sell from location
+                  </div>
+                  <ul className="max-h-64 overflow-y-auto">
+                    {getLocations().map((l) => {
+                      const on = l.id === activeLocation.activeId
+                      return (
+                        <li key={l.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              activeLocation.setActiveId(l.id)
+                              setOpen(false)
+                            }}
+                            className={`flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm hover:bg-ink-50 ${
+                              on ? 'bg-brand-50' : ''
+                            }`}
+                          >
+                            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-ink-100 text-ink-700">
+                              <MapPin className="h-3.5 w-3.5" />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-semibold text-ink-900">
+                                {l.name}
+                              </span>
+                              <span className="block truncate text-[10px] text-ink-500">
+                                {l.code} · {l.status === 'active' ? 'Active' : l.status}
+                              </span>
+                            </span>
+                            {on && (
+                              <span className="rounded-pill bg-brand-500 px-2 py-0.5 text-[10px] font-bold text-ink-900">
+                                Active
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                  <div className="mt-1 border-t border-ink-100 pt-1">
+                    <Link
+                      to="/app/locations"
+                      onClick={() => setOpen(false)}
+                      className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-sm font-semibold text-ink-800 hover:bg-ink-50"
+                    >
+                      <MapPin className="h-4 w-4" /> Manage locations
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : activeLocation.location ? (
+            // Single-location mode: show the active location as a static
+            // chip so the operator still has visual confirmation, but no
+            // dropdown — there's nowhere else to switch to.
+            <span
+              className="inline-flex items-center gap-2 rounded-pill border border-ink-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-700"
+              title="Single-location mode"
             >
               <MapPin className="h-3.5 w-3.5 text-ink-500" />
               <span className="max-w-[180px] truncate">
-                {activeLocation.location?.name ?? 'Select location'}
+                {activeLocation.location.name}
               </span>
-              {activeLocation.location && (
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    isLocationOpenNow(activeLocation.location)
-                      ? 'bg-emerald-500'
-                      : activeLocation.location.status === 'active'
-                      ? 'bg-amber-500'
-                      : 'bg-ink-300'
-                  }`}
-                  aria-hidden
-                />
-              )}
-              <ChevronDown className="h-3.5 w-3.5 text-ink-400" />
-            </button>
-            {open && (
-              <div className="absolute right-0 top-full z-40 mt-2 w-72 overflow-hidden rounded-2xl border border-ink-100 bg-white p-1.5 shadow-pop">
-                <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-ink-400">
-                  Sell from location
-                </div>
-                <ul className="max-h-64 overflow-y-auto">
-                  {getLocations().map((l) => {
-                    const on = l.id === activeLocation.activeId
-                    return (
-                      <li key={l.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            activeLocation.setActiveId(l.id)
-                            setOpen(false)
-                          }}
-                          className={`flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm hover:bg-ink-50 ${
-                            on ? 'bg-brand-50' : ''
-                          }`}
-                        >
-                          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-ink-100 text-ink-700">
-                            <MapPin className="h-3.5 w-3.5" />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate font-semibold text-ink-900">
-                              {l.name}
-                            </span>
-                            <span className="block truncate text-[10px] text-ink-500">
-                              {l.code} · {l.status === 'active' ? 'Active' : l.status}
-                            </span>
-                          </span>
-                          {on && (
-                            <span className="rounded-pill bg-brand-500 px-2 py-0.5 text-[10px] font-bold text-ink-900">
-                              Active
-                            </span>
-                          )}
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-                <div className="mt-1 border-t border-ink-100 pt-1">
-                  <Link
-                    to="/app/locations"
-                    onClick={() => setOpen(false)}
-                    className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-sm font-semibold text-ink-800 hover:bg-ink-50"
-                  >
-                    <MapPin className="h-4 w-4" /> Manage locations
-                  </Link>
-                </div>
-              </div>
-            )}
-          </div>
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  isLocationOpenNow(activeLocation.location)
+                    ? 'bg-emerald-500'
+                    : activeLocation.location.status === 'active'
+                    ? 'bg-amber-500'
+                    : 'bg-ink-300'
+                }`}
+                aria-hidden
+              />
+            </span>
+          ) : null}
 
-          <button
-            onClick={() => navigate('/app/dashboard')}
-            className="hidden h-9 w-9 place-items-center rounded-full border border-ink-200 bg-white text-ink-700 transition-colors hover:bg-ink-50 sm:grid"
-            aria-label="Back to admin dashboard"
-            title="Admin"
-          >
-            <LayoutDashboard className="h-4 w-4" />
-          </button>
           <TopbarNotifications
             open={notifOpen}
             onOpenChange={setNotifOpen}

@@ -43,6 +43,16 @@ interface OrderLine {
   price: number
   qty: number
   image: string
+  /** True when the price on this line was entered by the cashier via the
+   * price-edit POS flow — surfaces a "Custom price" indicator in the
+   * checkout summary without altering the actual charged amount. */
+  customPrice?: boolean
+  /** Optional variant id captured at the time of sale (when the product
+   * has variants and one was picked via the variant picker). */
+  variantId?: string
+  /** Optional human-readable variant name — preserved on the transaction
+   * so historical orders retain exactly which variant was sold. */
+  variantName?: string
 }
 
 interface Promo {
@@ -110,19 +120,34 @@ export default function POSPaymentPage() {
   useEffect(() => {
     const cart = getCart()
     const products = getProducts()
-    const mapped: OrderLine[] = cart
-      .map((c) => {
-        const p = products.find((x) => x.id === c.productId)
-        if (!p) return null
-        return {
-          productId: c.productId,
-          name: p.name,
-          price: p.price,
-          qty: c.qty,
-          image: p.image,
-        }
+    const mapped: OrderLine[] = []
+    for (const c of cart) {
+      const p = products.find((x) => x.id === c.productId)
+      if (!p) continue
+      // Resolve the variant (if any) so the line's price reflects what
+      // the cashier actually rang up and the variant id / name is
+      // preserved on the final transaction for historical accuracy.
+      const variant = c.variantId
+        ? p.variants.find((v) => v.id === c.variantId)
+        : undefined
+      // Honour any per-line override price the cashier entered at the POS.
+      const price =
+        typeof c.overridePrice === 'number'
+          ? c.overridePrice
+          : variant
+            ? variant.price
+            : p.price
+      mapped.push({
+        productId: c.productId,
+        name: p.name,
+        price,
+        qty: c.qty,
+        image: p.image,
+        customPrice: typeof c.overridePrice === 'number',
+        variantId: c.variantId,
+        variantName: variant?.name,
       })
-      .filter((x): x is OrderLine => x !== null)
+    }
     setLines(mapped)
   }, [])
 
@@ -168,6 +193,8 @@ export default function POSPaymentPage() {
       name: l.name,
       price: l.price,
       qty: l.qty,
+      variantId: l.variantId,
+      variantName: l.variantName,
     }))
     const tax = business?.taxRate ? Math.round(((subtotal - discount) * business.taxRate) / 100) : 0
     const activeId = getActiveLocationIdSync()
@@ -387,14 +414,21 @@ function OrderSummaryPanel({
       <div className="pos-scroll max-h-[320px] space-y-2 overflow-y-auto px-5 py-4">
         {lines.map((l) => (
           <div
-            key={l.productId}
+            key={l.productId + String(l.customPrice ?? false)}
             className="flex items-center gap-3 rounded-xl border border-ink-100 bg-ink-50/40 p-2"
           >
             <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg bg-white">
               <img src={l.image} alt={l.name} className="h-full w-full object-cover" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold text-ink-900">{l.name}</div>
+              <div className="flex items-center gap-1.5">
+                <span className="truncate text-sm font-semibold text-ink-900">{l.name}</span>
+                {l.customPrice && (
+                  <span className="inline-flex items-center rounded-pill border border-amber-200 bg-amber-50 px-1.5 py-px font-mono text-[9px] font-bold uppercase tracking-wide text-amber-700">
+                    Custom price
+                  </span>
+                )}
+              </div>
               <div className="text-[11px] text-ink-500">
                 {currency(l.price)} × {l.qty}
               </div>

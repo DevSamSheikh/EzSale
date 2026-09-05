@@ -22,6 +22,11 @@ import {
 import { EmptyState, PageHeader, StatCard } from '../../components/Primitives'
 import { ResponsiveTable, Field, FieldRow } from '../../components/ResponsiveTable'
 import {
+  FilterBarSection,
+  FilterSearchInput,
+  FilterSelect,
+} from '../../components/FilterBar'
+import {
   cardStatusLabel,
   cardTypeLabel,
   createCard,
@@ -46,6 +51,7 @@ type StatusFilter = MembershipCardStatus | 'all'
 type TypeFilter = MembershipCardType | 'all'
 type ViewMode = 'list' | 'grid'
 type PageSize = 6 | 12 | 24 | 48
+type AssignmentFilter = 'all' | 'assigned' | 'unassigned'
 
 const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -64,6 +70,12 @@ const TYPE_FILTERS: { id: TypeFilter; label: string }[] = [
   { id: 'virtual', label: 'Virtual' },
   { id: 'corporate', label: 'Corporate' },
   { id: 'gift', label: 'Gift' },
+]
+
+const ASSIGNMENT_FILTERS: { id: AssignmentFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'assigned', label: 'Assigned' },
+  { id: 'unassigned', label: 'Unassigned' },
 ]
 
 function statusPillClass(s: MembershipCardStatus) {
@@ -138,6 +150,8 @@ export default function CardsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [tierFilter, setTierFilter] = useState<string>('all')
+  const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>('all')
+  const [memberFilter, setMemberFilter] = useState<string>('all')
   const [addOpen, setAddOpen] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [page, setPage] = useState(1)
@@ -174,6 +188,9 @@ export default function CardsPage() {
       if (statusFilter !== 'all' && c.status !== statusFilter) return false
       if (typeFilter !== 'all' && c.type !== typeFilter) return false
       if (tierFilter !== 'all' && c.tier !== tierFilter) return false
+      if (assignmentFilter === 'assigned' && !c.memberId) return false
+      if (assignmentFilter === 'unassigned' && c.memberId) return false
+      if (memberFilter !== 'all' && c.memberId !== memberFilter) return false
       if (q) {
         const member = getMember(c.memberId)
         const hay = [
@@ -191,11 +208,27 @@ export default function CardsPage() {
       }
       return true
     })
-  }, [cards, search, statusFilter, typeFilter, tierFilter])
+  }, [
+    cards,
+    search,
+    statusFilter,
+    typeFilter,
+    tierFilter,
+    assignmentFilter,
+    memberFilter,
+  ])
 
   useEffect(() => {
     setPage(1)
-  }, [search, statusFilter, typeFilter, tierFilter, pageSize])
+  }, [
+    search,
+    statusFilter,
+    typeFilter,
+    tierFilter,
+    assignmentFilter,
+    memberFilter,
+    pageSize,
+  ])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const safePage = Math.min(page, totalPages)
@@ -208,6 +241,68 @@ export default function CardsPage() {
     setAddOpen(true)
     playCue('tap')
   }
+
+  function clearAllFilters() {
+    setSearch('')
+    setStatusFilter('all')
+    setTypeFilter('all')
+    setTierFilter('all')
+    setAssignmentFilter('all')
+    setMemberFilter('all')
+    playCue('tap')
+  }
+
+  const memberOptions = useMemo(() => {
+    const ids = new Set<string>()
+    cards.forEach((c) => c.memberId && ids.add(c.memberId))
+    const list = Array.from(ids)
+      .map((id) => {
+        const m = getMember(id)
+        return m ? { value: m.id, label: m.name, hint: m.email } : null
+      })
+      .filter(Boolean) as { value: string; label: string; hint?: string }[]
+    return list.sort((a, b) => a.label.localeCompare(b.label))
+  }, [cards])
+
+  const statusOptions = useMemo(
+    () =>
+      STATUS_FILTERS.filter((s) => s.id !== 'all').map((s) => ({
+        value: s.id as string,
+        label: s.label,
+      })),
+    [],
+  )
+  const typeOptions = useMemo(
+    () =>
+      TYPE_FILTERS.filter((t) => t.id !== 'all').map((t) => ({
+        value: t.id as string,
+        label: t.label,
+      })),
+    [],
+  )
+  const tierOptions = useMemo(
+    () =>
+      tiers
+        .filter((t) => t !== 'all')
+        .map((t) => ({ value: t, label: `${t} tier` })),
+    [tiers],
+  )
+  const assignmentOptions = useMemo(
+    () =>
+      ASSIGNMENT_FILTERS.filter((a) => a.id !== 'all').map((a) => ({
+        value: a.id as string,
+        label: a.label,
+      })),
+    [],
+  )
+
+  const activeFilterCount =
+    (search.trim() ? 1 : 0) +
+    (statusFilter !== 'all' ? 1 : 0) +
+    (typeFilter !== 'all' ? 1 : 0) +
+    (tierFilter !== 'all' ? 1 : 0) +
+    (assignmentFilter !== 'all' ? 1 : 0) +
+    (memberFilter !== 'all' ? 1 : 0)
 
   return (
     <div>
@@ -247,69 +342,87 @@ export default function CardsPage() {
         />
       </div>
 
-      <div className="card p-4 sm:p-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative min-w-0 lg:flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by card number, NFC UID, or member…"
-              className="input pl-9"
-            />
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"
-                aria-label="Clear search"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1 rounded-pill border border-ink-200 bg-white p-1">
-              <Filter className="ml-2 h-3.5 w-3.5 text-ink-400" />
-              {STATUS_FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => setStatusFilter(f.id)}
-                  className={
-                    f.id === statusFilter
-                      ? 'rounded-pill bg-ink-900 px-2.5 py-1 text-[11px] font-semibold text-white'
-                      : 'rounded-pill px-2.5 py-1 text-[11px] font-semibold text-ink-700 hover:bg-ink-50'
-                  }
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            <select
-              className="h-10 !w-44 shrink-0 rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
-            >
-              {TYPE_FILTERS.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-            <select
-              className="h-10 !w-40 shrink-0 rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-              value={tierFilter}
-              onChange={(e) => setTierFilter(e.target.value)}
-            >
-              {tiers.map((t) => (
-                <option key={t} value={t}>
-                  {t === 'all' ? 'All tiers' : `${t} tier`}
-                </option>
-              ))}
-            </select>
-          </div>
+      <FilterBarSection activeCount={activeFilterCount} onClear={clearAllFilters}>
+        <FilterSearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search by card number, NFC UID, or member…"
+        />
+        <FilterSelect
+          label="Status"
+          icon={<Filter className="h-3.5 w-3.5" />}
+          options={statusOptions}
+          selected={statusFilter === 'all' ? [] : [statusFilter]}
+          onChange={(v) => setStatusFilter((v[0] as StatusFilter) ?? 'all')}
+        />
+        <FilterSelect
+          label="Type"
+          icon={<CreditCard className="h-3.5 w-3.5" />}
+          options={typeOptions}
+          selected={typeFilter === 'all' ? [] : [typeFilter]}
+          onChange={(v) => setTypeFilter((v[0] as TypeFilter) ?? 'all')}
+        />
+        <FilterSelect
+          label="Tier"
+          icon={<Wallet className="h-3.5 w-3.5" />}
+          options={tierOptions}
+          selected={tierFilter === 'all' ? [] : [tierFilter]}
+          onChange={(v) => setTierFilter(v[0] ?? 'all')}
+        />
+        <FilterSelect
+          label="Assignment"
+          icon={<UserIcon className="h-3.5 w-3.5" />}
+          options={assignmentOptions}
+          selected={assignmentFilter === 'all' ? [] : [assignmentFilter]}
+          onChange={(v) =>
+            setAssignmentFilter((v[0] as AssignmentFilter) ?? 'all')
+          }
+        />
+        {memberOptions.length > 0 && (
+          <FilterSelect
+            label="Member"
+            icon={<UserIcon className="h-3.5 w-3.5" />}
+            options={memberOptions}
+            selected={memberFilter === 'all' ? [] : [memberFilter]}
+            onChange={(v) => setMemberFilter(v[0] ?? 'all')}
+          />
+        )}
+        <div
+          role="tablist"
+          aria-label="View mode"
+          className="hidden sm:inline-flex items-center rounded-full border border-ink-200 bg-white p-0.5"
+        >
+          <button
+            role="tab"
+            aria-selected={viewMode === 'list'}
+            onClick={() => setViewMode('list')}
+            className={
+              viewMode === 'list'
+                ? 'inline-flex h-7 w-8 items-center justify-center rounded-full bg-ink-900 text-white'
+                : 'inline-flex h-7 w-8 items-center justify-center rounded-full text-ink-500 hover:bg-ink-50'
+            }
+            title="List view"
+          >
+            <List className="h-3.5 w-3.5" />
+          </button>
+          <button
+            role="tab"
+            aria-selected={viewMode === 'grid'}
+            onClick={() => setViewMode('grid')}
+            className={
+              viewMode === 'grid'
+                ? 'inline-flex h-7 w-8 items-center justify-center rounded-full bg-ink-900 text-white'
+                : 'inline-flex h-7 w-8 items-center justify-center rounded-full text-ink-500 hover:bg-ink-50'
+            }
+            title="Grid view"
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+          </button>
         </div>
+      </FilterBarSection>
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-500">
+      <div className="card p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-500">
           <div>
             Showing{' '}
             <span className="font-semibold text-ink-700">
@@ -319,53 +432,6 @@ export default function CardsPage() {
             </span>{' '}
             of <span className="font-semibold text-ink-700">{filtered.length}</span> cards
             {memberCount > 0 ? ` · ${memberCount} members` : ''}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {(statusFilter !== 'all' || typeFilter !== 'all' || tierFilter !== 'all' || search) && (
-              <button
-                onClick={() => {
-                  setSearch('')
-                  setStatusFilter('all')
-                  setTypeFilter('all')
-                  setTierFilter('all')
-                }}
-                className="text-xs font-semibold text-ink-700 hover:underline"
-              >
-                Reset filters
-              </button>
-            )}
-            <div
-              role="tablist"
-              aria-label="View mode"
-              className="hidden sm:inline-flex items-center rounded-pill border border-ink-200 bg-white p-0.5"
-            >
-              <button
-                role="tab"
-                aria-selected={viewMode === 'list'}
-                onClick={() => setViewMode('list')}
-                className={
-                  viewMode === 'list'
-                    ? 'inline-flex h-7 w-8 items-center justify-center rounded-pill bg-ink-900 text-white'
-                    : 'inline-flex h-7 w-8 items-center justify-center rounded-pill text-ink-500 hover:bg-ink-50'
-                }
-                title="List view"
-              >
-                <List className="h-3.5 w-3.5" />
-              </button>
-              <button
-                role="tab"
-                aria-selected={viewMode === 'grid'}
-                onClick={() => setViewMode('grid')}
-                className={
-                  viewMode === 'grid'
-                    ? 'inline-flex h-7 w-8 items-center justify-center rounded-pill bg-ink-900 text-white'
-                    : 'inline-flex h-7 w-8 items-center justify-center rounded-pill text-ink-500 hover:bg-ink-50'
-                }
-                title="Grid view"
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-              </button>
-            </div>
           </div>
         </div>
 

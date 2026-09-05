@@ -19,6 +19,7 @@ import { TopbarNotifications } from './NotificationDropdown'
 import { ContextSwitcher } from './ContextSwitcher'
 import { getAuth, clearAuth, NAV_LINKS } from '../store'
 import { getCurrentOperator, getRoles } from '../operators-store'
+import { useIsMultiLocation } from '../hooks/useIsMultiLocation'
 
 export function Topbar({
   onMenu,
@@ -104,11 +105,14 @@ export function Topbar({
       {/* Mega context switcher (Business + Location + User role) */}
       <ContextSwitcher />
 
-      {/* Search trigger */}
+      {/* Spacer pushes the search into the visual centre of the topbar */}
+      <div className="hidden flex-1 md:block" />
+
+      {/* Centered search trigger */}
       <button
         type="button"
         onClick={() => setSearchOpen(true)}
-        className="ml-auto hidden w-full max-w-md items-center gap-2 rounded-xl border border-ink-200 bg-white px-3 py-1.5 text-left text-sm text-ink-500 shadow-soft transition-colors hover:border-ink-300 hover:bg-ink-50 md:flex"
+        className="hidden w-full max-w-md items-center gap-2 rounded-xl border border-ink-200 bg-white px-3 py-1.5 text-left text-sm text-ink-500 shadow-soft transition-colors hover:border-ink-300 hover:bg-ink-50 md:flex"
         aria-label={`Open search (${shortcutLabel})`}
       >
         <Search className="h-4 w-4 text-ink-400" />
@@ -265,6 +269,7 @@ export function MobileMoreSheet({
   const location = useLocation()
   const me = getCurrentOperator()
   if (!open) return null
+  const multi = useIsMultiLocation()
   return (
     <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-ink-900/50" onClick={onClose} aria-hidden />
@@ -276,7 +281,9 @@ export function MobileMoreSheet({
           More
         </div>
         <nav className="space-y-1 overflow-y-auto px-3 py-2">
-          {NAV_LINKS.filter((l) => l.to !== '/app/pos').map((l) => {
+          {NAV_LINKS.filter((l) => l.to !== '/app/pos')
+            .filter((l) => multi || l.to !== '/app/locations')
+            .map((l) => {
             const active = location.pathname.startsWith(l.to)
             return (
               <Link

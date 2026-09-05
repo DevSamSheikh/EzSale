@@ -257,7 +257,7 @@ export function globalSearch(rawQuery: string): SearchResults {
       title: `Deposit ${maskCardNumber(card?.cardNumber ?? '••••')}`,
       subtitle: member ? `From ${member.name}` : d.note ?? d.reference ?? 'Top-up',
       meta: `+$${d.amount.toFixed(2)} · ${paymentMethodLabel(d.method as PaymentMethod)}`,
-      href: card ? `/app/cards/${card.id}` : '/app/deposits',
+      href: card ? `/app/cards/${card.id}` : '/app/deposit-requests',
       badge: d.method,
       badgeTone: 'brand',
       iconKind: 'deposit',
@@ -318,7 +318,7 @@ export function globalSearch(rawQuery: string): SearchResults {
     id: 'deposits',
     label: 'Deposits',
     count: depositHits.length,
-    allHref: `/app/deposits?q=${encodeURIComponent(q)}`,
+    allHref: `/app/deposit-requests?q=${encodeURIComponent(q)}`,
     items: depositHits,
   })
   groups.push({
